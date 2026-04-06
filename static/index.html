@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Practice Queen's Pawn and King's Pawn opening lines from your own repertoire."
+    />
+    <meta name="theme-color" content="#263128" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Openings" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-180.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Opening Trainer</title>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero card">
+        <p class="eyebrow">Offline-Ready Repertoire Trainer</p>
+        <h1>Opening Practice</h1>
+        <p class="hero-copy">
+          Turn your Queen's Pawn and King's Pawn ZIP files into a searchable opening
+          database, then practice the lines from a clean phone-friendly board you can
+          install as a web app.
+        </p>
+      </header>
+
+      <main class="layout">
+        <section class="board-column">
+          <div class="board-header card">
+            <div>
+              <p class="panel-label">Current Practice</p>
+              <h2 id="current-opening">Choose an opening</h2>
+              <p id="current-meta" class="subtle-copy current-meta">
+                Load an opening to see its repertoire group and source file.
+              </p>
+            </div>
+            <div class="status-block">
+              <span id="turn-pill" class="pill neutral">Waiting</span>
+              <span id="depth-pill" class="pill subtle">Depth 12 plies</span>
+            </div>
+          </div>
+
+          <div class="board-panel card">
+            <div class="board-stage">
+              <div class="board-frame">
+                <div id="board" class="board" aria-label="Chess board"></div>
+              </div>
+            </div>
+
+            <div class="board-side">
+              <div id="feedback" class="feedback neutral">
+                Select an opening on the right, then start a practice session.
+              </div>
+
+              <div class="info-card">
+                <p class="panel-label">Book Moves</p>
+                <div id="expected-moves" class="chip-row empty">No opening loaded yet.</div>
+              </div>
+
+              <div class="info-card">
+                <div class="row-head">
+                  <p class="panel-label">Move List</p>
+                  <button id="reset-btn" class="ghost-btn" disabled>Reset</button>
+                </div>
+                <div id="history" class="history empty">No moves yet.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <section class="card controls">
+            <div class="info-card install-card">
+              <p class="panel-label">Install On iPhone</p>
+              <p class="subtle-copy">
+                Open this app in Safari, tap Share, then choose Add to Home Screen.
+                Openings you load are kept for offline practice.
+              </p>
+              <p id="offline-status" class="subtle-copy offline-status">
+                Offline support is loading.
+              </p>
+            </div>
+
+            <div class="info-card database-card">
+              <p class="panel-label">Opening Database</p>
+              <p id="database-summary" class="subtle-copy">
+                Loading the opening database index...
+              </p>
+              <div class="database-links">
+                <a
+                  id="database-index-link"
+                  class="text-link"
+                  href="./data/database.json"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open catalog JSON
+                </a>
+                <a
+                  id="selected-book-link"
+                  class="text-link disabled-link"
+                  href="./data/database.json"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-disabled="true"
+                >
+                  Open selected book JSON
+                </a>
+              </div>
+            </div>
+
+            <div class="control-block">
+              <label class="panel-label">Repertoire</label>
+              <div id="category-filters" class="filter-row"></div>
+            </div>
+
+            <div class="control-block">
+              <label class="panel-label" for="search-input">Find an opening</label>
+              <input id="search-input" type="search" placeholder="Search zip names..." />
+            </div>
+
+            <div class="split-controls">
+              <div class="control-block">
+                <label class="panel-label" for="side-select">Practice side</label>
+                <select id="side-select">
+                  <option value="white">White</option>
+                  <option value="black">Black</option>
+                </select>
+              </div>
+
+              <div class="control-block">
+                <label class="panel-label" for="depth-select">Line depth</label>
+                <select id="depth-select">
+                  <option value="10">10 plies</option>
+                  <option value="12" selected>12 plies</option>
+                  <option value="16">16 plies</option>
+                  <option value="20">20 plies</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="start-btn" class="primary-btn" disabled>Start Practice</button>
+          </section>
+
+          <section class="card openings-card">
+            <div class="row-head">
+              <div>
+                <p class="panel-label">Opening Files</p>
+                <h3 id="opening-count">Loading...</h3>
+              </div>
+              <span class="subtle-copy">Searchable opening database for offline play</span>
+            </div>
+            <div id="opening-list" class="opening-list"></div>
+          </section>
+
+          <details class="card variation-card" open>
+            <summary>
+              <div>
+                <p class="panel-label">Variation Tree</p>
+                <h3 id="variation-title">Select an opening</h3>
+              </div>
+            </summary>
+            <div id="variation-stats" class="stats-grid empty">No opening selected.</div>
+            <div id="tree" class="tree empty">The opening tree will appear here.</div>
+          </details>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

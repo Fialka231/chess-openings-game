@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+*.log
+*.tmp
+
+# Generated build output. GitHub Pages rebuilds this from the opening ZIP sources.
+static/data/
+
+# Not used by the web app or deploy workflow.
+Stockfish-master.zip
