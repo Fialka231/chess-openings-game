@@ -123,36 +123,95 @@
               <input id="search-input" type="search" placeholder="Search zip names..." />
             </div>
 
-            <div class="control-block">
-              <label class="panel-label" for="mode-select">Practice mode</label>
-              <select id="mode-select">
-                <option value="line" selected>Line play</option>
-                <option value="position">Position drill</option>
-              </select>
-              <p id="mode-note" class="subtle-copy control-note">
-                Start from move 1 and answer the trainer's book moves.
+            <div class="practice-tabs" role="tablist" aria-label="Practice mode">
+              <button
+                id="line-tab"
+                class="practice-tab active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="line-panel"
+              >
+                Line Play
+              </button>
+              <button
+                id="position-tab"
+                class="practice-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="position-panel"
+              >
+                Position Drill
+              </button>
+            </div>
+
+            <section
+              id="line-panel"
+              class="mode-panel"
+              role="tabpanel"
+              aria-labelledby="line-tab"
+            >
+              <p class="subtle-copy mode-copy">
+                Start from move 1 and answer the trainer's book moves until the stored line ends.
               </p>
-            </div>
+              <div class="split-controls">
+                <div class="control-block">
+                  <label class="panel-label" for="line-side-select">Practice side</label>
+                  <select id="line-side-select">
+                    <option value="white">White</option>
+                    <option value="black">Black</option>
+                  </select>
+                </div>
 
-            <div class="split-controls">
-              <div class="control-block">
-                <label class="panel-label" for="side-select">Practice side</label>
-                <select id="side-select">
-                  <option value="white">White</option>
-                  <option value="black">Black</option>
-                </select>
+                <div class="control-block">
+                  <label class="panel-label" for="line-depth-select">Line depth</label>
+                  <select id="line-depth-select">
+                    <option value="10">10 plies</option>
+                    <option value="12" selected>12 plies</option>
+                    <option value="16">16 plies</option>
+                    <option value="20">20 plies</option>
+                  </select>
+                </div>
               </div>
+            </section>
 
-              <div class="control-block">
-                <label class="panel-label" for="depth-select">Line depth</label>
-                <select id="depth-select">
-                  <option value="10">10 plies</option>
-                  <option value="12" selected>12 plies</option>
-                  <option value="16">16 plies</option>
-                  <option value="20">20 plies</option>
-                </select>
+            <section
+              id="position-panel"
+              class="mode-panel"
+              role="tabpanel"
+              aria-labelledby="position-tab"
+              hidden
+            >
+              <p class="subtle-copy mode-copy">
+                Jump into a random book position 2-3 moves in. You must find the next 2-3
+                correct moves, and any wrong move resets the same position.
+              </p>
+              <div class="split-controls">
+                <div class="control-block">
+                  <label class="panel-label" for="drill-side-select">Practice side</label>
+                  <select id="drill-side-select">
+                    <option value="white">White</option>
+                    <option value="black">Black</option>
+                  </select>
+                </div>
+
+                <div class="drill-stats" aria-label="Drill format">
+                  <div class="drill-stat">
+                    <strong>2-3</strong>
+                    <span>moves in</span>
+                  </div>
+                  <div class="drill-stat">
+                    <strong>2-3</strong>
+                    <span>moves to solve</span>
+                  </div>
+                  <div class="drill-stat">
+                    <strong>reset</strong>
+                    <span>on wrong move</span>
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
 
             <button id="start-btn" class="primary-btn" disabled>Start Practice</button>
           </section>

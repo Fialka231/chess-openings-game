@@ -470,19 +470,82 @@ select {
   color: var(--olive);
 }
 
+.practice-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.practice-tab {
+  border: 1px solid rgba(93, 106, 91, 0.18);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--olive);
+  font-weight: 700;
+}
+
+.practice-tab.active {
+  background: rgba(180, 94, 58, 0.16);
+  border-color: rgba(180, 94, 58, 0.34);
+  color: var(--accent-dark);
+}
+
+.mode-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(93, 106, 91, 0.12);
+}
+
+.mode-panel[hidden] {
+  display: none;
+}
+
+.mode-copy {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .control-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.control-note {
-  margin: 0;
-  line-height: 1.45;
-}
-
 .split-controls {
   align-items: end;
+}
+
+.mode-panel .split-controls {
+  align-items: stretch;
+}
+
+.drill-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.drill-stat {
+  padding: 12px 10px;
+  border-radius: 14px;
+  background: rgba(49, 64, 51, 0.08);
+  text-align: center;
+}
+
+.drill-stat strong {
+  display: block;
+  color: var(--accent-dark);
+  font-size: 1rem;
+}
+
+.drill-stat span {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .filter-row {
@@ -760,5 +823,9 @@ select {
   .database-links {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .drill-stats {
+    grid-template-columns: 1fr;
   }
 }
