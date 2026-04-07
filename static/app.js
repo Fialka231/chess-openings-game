@@ -47,7 +47,7 @@ const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
 const MAX_TREE_NODES = 240;
 const PRACTICE_MODE_LABELS = {
   line: "Line Play",
-  position: "Position Drill",
+  position: "Realistic Drill",
 };
 const DRILL_PRIMARY_START_MIN_PLY = 4;
 const DRILL_PRIMARY_START_MAX_PLY = 6;
@@ -140,17 +140,21 @@ function pluralize(count, singular, plural = `${singular}s`) {
 
 function currentSideSelection() {
   return currentPracticeMode() === "position"
-    ? elements.drillSideSelect.value
-    : elements.lineSideSelect.value;
+    ? elements.drillSideSelect?.value || "white"
+    : elements.lineSideSelect?.value || "white";
 }
 
 function currentLineDepth() {
-  return Number(elements.lineDepthSelect.value);
+  return Number(elements.lineDepthSelect?.value || 12);
 }
 
 function syncSideSelectors(value) {
-  elements.lineSideSelect.value = value;
-  elements.drillSideSelect.value = value;
+  if (elements.lineSideSelect) {
+    elements.lineSideSelect.value = value;
+  }
+  if (elements.drillSideSelect) {
+    elements.drillSideSelect.value = value;
+  }
 }
 
 function pieceSvg(piece) {
@@ -382,6 +386,15 @@ function weightedChoice(nodes, weightFor = (node) => node.count) {
     }
   }
   return nodes[nodes.length - 1];
+}
+
+function shuffled(items) {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy;
 }
 
 function openingMove(node) {
@@ -702,13 +715,13 @@ function createLineSession(book, userColor, depthLimit) {
   return session;
 }
 
-function createPositionSession(book, userColor, depthLimit) {
-  const candidate = pickDrillCandidate(book, userColor);
+function createPositionSession(book, userColor, depthLimit, presetCandidate = null) {
+  const candidate = presetCandidate || pickDrillCandidate(book, userColor);
 
   if (!candidate) {
     const fallback = createLineSession(book, userColor, depthLimit);
     fallback.mode = "position";
-    fallback.message = `No deeper drill position was available at this depth, so training started from move 1. ${fallback.message}`;
+    fallback.message = `No deeper realistic drill position was available in this opening, so training started from move 1. ${fallback.message}`;
     return fallback;
   }
 
@@ -733,7 +746,7 @@ function createPositionSession(book, userColor, depthLimit) {
     endPly: session.depthLimit,
     goalMessage,
   };
-  session.message = `${introPrefix}Position drill starts after ${startLabel}. ${goalMessage}`;
+  session.message = `${introPrefix}Realistic drill starts after ${startLabel}. ${goalMessage}`;
   return session;
 }
 
@@ -746,7 +759,7 @@ function createSession(book, userColor, depthLimit, mode = "line") {
 function playMove(session, move) {
   if (session.completed) {
     session.message = session.mode === "position"
-      ? "This drill is finished. Start a new drill to try another position."
+      ? "This realistic drill is finished. Start a new drill to try another opening."
       : "This line is finished. Reset to try another branch.";
     return { ok: false, session };
   }
@@ -805,6 +818,14 @@ function setEngineIdleState(
 }
 
 function renderEngineCard() {
+  if (
+    !elements.engineStatus ||
+    !elements.engineScore ||
+    !elements.engineDetail ||
+    !elements.engineBest
+  ) {
+    return;
+  }
   elements.engineStatus.textContent = state.engine.message;
   elements.engineScore.className = `engine-score ${state.engine.scoreTone}`;
   elements.engineScore.textContent = state.engine.scoreText;
@@ -956,7 +977,7 @@ function renderExpectedMoves() {
   if (!moves.length) {
     elements.expectedMoves.className = "chip-row empty";
     const idleMessage = currentPracticeMode() === "position"
-      ? "Start a position drill to jump into a book position."
+      ? "Start Realistic Drill to jump into a random opening position."
       : "Tap Start Practice to see the opening moves here.";
     elements.expectedMoves.textContent = state.session?.completed
       ? currentPracticeMode() === "position"
@@ -1024,12 +1045,14 @@ function renderSessionHeader() {
   elements.currentOpening.textContent = opening?.name || "Choose an opening";
   elements.currentMeta.textContent = opening
     ? `${opening.category} • ${opening.relativePath || opening.fileName}`
-    : "Load an opening to see its repertoire group and source file.";
+    : currentPracticeMode() === "position"
+      ? "Realistic drill pulls a random opening from the full database each time."
+      : "Load an opening to see its repertoire group and source file.";
 
   if (state.session?.mode === "position") {
-    elements.depthPill.textContent = "Position Drill • 2-3 move solve";
+    elements.depthPill.textContent = "Realistic Drill • 2-3 move solve";
   } else if (currentPracticeMode() === "position") {
-    elements.depthPill.textContent = "Position Drill • random mid-line";
+    elements.depthPill.textContent = "Realistic Drill • random opening";
   } else {
     const depth = state.session?.depthLimit || currentLineDepth();
     elements.depthPill.textContent = `${practiceModeLabel(currentPracticeMode())} • ${depth} plies`;
@@ -1060,6 +1083,10 @@ function renderPracticeModeTabs() {
   const mode = currentPracticeMode();
   const lineActive = mode === "line";
 
+  if (!elements.lineTab || !elements.positionTab || !elements.linePanel || !elements.positionPanel) {
+    return;
+  }
+
   elements.lineTab.classList[lineActive ? "add" : "remove"]("active");
   elements.positionTab.classList[lineActive ? "remove" : "add"]("active");
   elements.lineTab.setAttribute("aria-selected", String(lineActive));
@@ -1080,17 +1107,17 @@ function setActiveMode(mode) {
 
   if (state.selectedBook) {
     state.statusMessage = mode === "position"
-      ? "Position drill ready. Start a random mid-line puzzle from this opening."
+      ? "Realistic drill ready. Start a random opening puzzle from the full database."
       : "Line play ready. Start from move 1 and follow the trainer's responses.";
   } else {
     state.statusMessage = mode === "position"
-      ? "Choose an opening, then start a position drill."
+      ? "Realistic drill is ready. Start and the app will choose a random opening for you."
       : "Select an opening on the right, then start a practice session.";
   }
 
   setEngineIdleState(
     mode === "position"
-      ? "Start a position drill to evaluate a random mid-line position."
+      ? "Start realistic drill to evaluate a random opening position."
       : "Start line play to evaluate the current opening position.",
   );
   renderAll();
@@ -1311,9 +1338,10 @@ function renderVariationTree() {
 }
 
 function updateButtons() {
-  const canStart =
-    Boolean(state.selectedOpeningId) && Boolean(state.selectedBook) && !state.loadingBook;
   const mode = currentPracticeMode();
+  const canStart = mode === "position"
+    ? state.openings.length > 0
+    : Boolean(state.selectedOpeningId) && Boolean(state.selectedBook) && !state.loadingBook;
   elements.startBtn.disabled = !canStart || state.startingSession || state.loadingDatabase;
   elements.resetBtn.disabled = !state.session || state.startingSession || state.loadingBook;
   elements.resetBtn.textContent = mode === "position" ? "New Drill" : "Reset";
@@ -1321,7 +1349,7 @@ function updateButtons() {
     elements.startBtn.textContent = mode === "position" ? "Setting Drill..." : "Starting...";
     return;
   }
-  elements.startBtn.textContent = mode === "position" ? "Start Drill" : "Start Practice";
+  elements.startBtn.textContent = mode === "position" ? "Start Realistic Drill" : "Start Practice";
 }
 
 function renderAll() {
@@ -1421,6 +1449,33 @@ async function loadBook(opening) {
   return book;
 }
 
+async function loadRandomDrillBook(userColor) {
+  const openings = shuffled(state.openings);
+  if (!openings.length) {
+    throw new Error("No openings are available for realistic drill mode.");
+  }
+
+  let fallback = null;
+  const attempts = Math.min(openings.length, 12);
+  for (const opening of openings.slice(0, attempts)) {
+    const book = await loadBook(opening);
+    const candidate = pickDrillCandidate(book, userColor);
+    if (candidate) {
+      return { opening, book, candidate };
+    }
+    if (!fallback) {
+      fallback = { opening, book, candidate: null };
+    }
+  }
+
+  if (fallback) {
+    return fallback;
+  }
+
+  const opening = openings[0];
+  return { opening, book: await loadBook(opening), candidate: null };
+}
+
 async function selectOpening(openingId) {
   const opening = state.openings.find((item) => item.id === openingId);
   if (!opening) {
@@ -1439,11 +1494,11 @@ async function selectOpening(openingId) {
   try {
     state.selectedBook = await loadBook(opening);
     state.statusMessage = currentPracticeMode() === "position"
-      ? "Opening loaded. Start a position drill to jump into a random book position."
+      ? "Opening loaded for line reference. Realistic Drill still chooses a random opening from the full database."
       : "Opening loaded. Start line play, then tap a highlighted piece and its target square.";
     setEngineIdleState(
       currentPracticeMode() === "position"
-        ? "Start a position drill to see Stockfish evaluate a random book position."
+        ? "Start realistic drill to see Stockfish evaluate a random opening position."
         : "Start practice to see Stockfish evaluate the line on the board.",
     );
   } catch (error) {
@@ -1457,30 +1512,37 @@ async function selectOpening(openingId) {
 }
 
 async function startPractice() {
-  if (!state.selectedBook) {
+  const mode = currentPracticeMode();
+  const userColor = currentSideSelection();
+  const depth = currentLineDepth();
+
+  if (mode === "line" && !state.selectedBook) {
+    return;
+  }
+  if (mode === "position" && !state.openings.length) {
     return;
   }
 
   state.selectedSquare = null;
   state.startingSession = true;
   state.feedbackTone = "neutral";
-  state.statusMessage = currentPracticeMode() === "position"
-    ? "Loading a drill position..."
+  state.statusMessage = mode === "position"
+    ? "Loading a realistic drill from a random opening..."
     : "Starting a practice line...";
   renderAll();
 
   try {
-    state.session = createSession(
-      state.selectedBook,
-      currentSideSelection(),
-      currentLineDepth(),
-      currentPracticeMode(),
-    );
+    if (mode === "position") {
+      const selection = await loadRandomDrillBook(userColor);
+      state.session = createPositionSession(selection.book, userColor, depth, selection.candidate);
+    } else {
+      state.session = createLineSession(state.selectedBook, userColor, depth);
+    }
     state.feedbackTone = state.session.completed ? "complete" : "success";
     state.statusMessage = state.session.message;
   } catch (error) {
     state.feedbackTone = "error";
-    state.statusMessage = error.message;
+    state.statusMessage = error instanceof Error ? error.message : String(error);
   } finally {
     state.startingSession = false;
     renderAll();
@@ -1490,8 +1552,16 @@ async function startPractice() {
   }
 }
 
-function resetPractice() {
-  if (!state.selectedBook || !state.session) {
+async function resetPractice() {
+  if (!state.session) {
+    return;
+  }
+
+  if (state.session.mode === "position") {
+    await startPractice();
+    return;
+  }
+  if (!state.selectedBook) {
     return;
   }
 
@@ -1600,34 +1670,44 @@ elements.searchInput.addEventListener("input", (event) => {
   renderOpenings();
 });
 
-elements.lineTab.addEventListener("click", () => {
-  setActiveMode("line");
-});
+if (elements.lineTab) {
+  elements.lineTab.addEventListener("click", () => {
+    setActiveMode("line");
+  });
+}
 
-elements.positionTab.addEventListener("click", () => {
-  setActiveMode("position");
-});
+if (elements.positionTab) {
+  elements.positionTab.addEventListener("click", () => {
+    setActiveMode("position");
+  });
+}
 
-elements.lineSideSelect.addEventListener("change", (event) => {
-  syncSideSelectors(event.target.value);
-  renderAll();
-});
+if (elements.lineSideSelect) {
+  elements.lineSideSelect.addEventListener("change", (event) => {
+    syncSideSelectors(event.target.value);
+    renderAll();
+  });
+}
 
-elements.drillSideSelect.addEventListener("change", (event) => {
-  syncSideSelectors(event.target.value);
-  renderAll();
-});
+if (elements.drillSideSelect) {
+  elements.drillSideSelect.addEventListener("change", (event) => {
+    syncSideSelectors(event.target.value);
+    renderAll();
+  });
+}
 
-elements.lineDepthSelect.addEventListener("change", () => {
-  renderAll();
-});
+if (elements.lineDepthSelect) {
+  elements.lineDepthSelect.addEventListener("change", () => {
+    renderAll();
+  });
+}
 
 elements.startBtn.addEventListener("click", () => {
   void startPractice();
 });
 
 elements.resetBtn.addEventListener("click", () => {
-  resetPractice();
+  void resetPractice();
 });
 
 void setupOfflineSupport();

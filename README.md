@@ -7,9 +7,10 @@ This project is a lightweight phone-friendly web app for practicing Queen's Pawn
 - The opening files are now prebuilt into a static JSON database, so the app does not need to re-parse PGNs during play.
 - The browser runs the practice session directly from the stored opening tree.
 - The UI is designed for a fixed square board with built-in SVG chess pieces and installable PWA-style play on phones.
-- Position Drill and Line Play now live in separate tabs, and drills reset the same position after a wrong move.
+- Realistic Drill and Line Play now live in separate tabs, and drills reset the same position after a wrong move.
 - The local Python server can expose live Stockfish evaluations while you practice.
 - The deploy workflow now reuses cached opening data and only rebuilds it when the source ZIPs or build code actually change.
+- The service worker now refreshes the app shell from the network first, so updated HTML, CSS, and JavaScript are less likely to drift out of sync on phones.
 
 ## Build the opening library
 

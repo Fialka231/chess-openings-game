@@ -85,6 +85,20 @@ class OpeningTrainerTests(unittest.TestCase):
             book = reloaded.get_book(self.qp_id)
             self.assertEqual(book.root.sorted_children()[0].san, "d4")
 
+    def test_static_library_requires_full_manifest_to_count_as_current(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_root = Path(temp_dir)
+            state = OpeningTrainerState(PROJECT_ROOT, cache_root=output_root)
+            state.build_static_library(
+                force=True,
+                opening_ids=[self.qp_id, self.kp_id],
+                output_root=output_root,
+                write_icons=False,
+            )
+
+            reloaded = OpeningTrainerState(PROJECT_ROOT, cache_root=output_root)
+            self.assertFalse(reloaded.static_library_is_current(output_root))
+
     def test_engine_score_formatting_handles_centipawns_and_mate(self) -> None:
         cp_payload = format_engine_score(chess.engine.PovScore(chess.engine.Cp(34), chess.WHITE))
         mate_payload = format_engine_score(chess.engine.PovScore(chess.engine.Mate(-3), chess.WHITE))

@@ -1,4 +1,4 @@
-const CACHE_NAME = "opening-trainer-v5";
+const CACHE_NAME = "opening-trainer-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -60,18 +60,16 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200) {
-          return response;
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          const copy = response.clone();
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)),
+          );
         }
-        const copy = response.clone();
-        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)));
         return response;
-      });
-    }),
+      })
+      .catch(() => caches.match(event.request)),
   );
 });
