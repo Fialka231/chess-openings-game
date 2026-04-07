@@ -43,6 +43,10 @@ const PIECE_ART = {
 };
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
 const MAX_TREE_NODES = 240;
+const PRACTICE_MODE_LABELS = {
+  line: "Line Play",
+  position: "Position Drill",
+};
 
 const state = {
   openings: [],
@@ -75,6 +79,8 @@ const elements = {
   variationStats: document.getElementById("variation-stats"),
   tree: document.getElementById("tree"),
   searchInput: document.getElementById("search-input"),
+  modeSelect: document.getElementById("mode-select"),
+  modeNote: document.getElementById("mode-note"),
   sideSelect: document.getElementById("side-select"),
   depthSelect: document.getElementById("depth-select"),
   startBtn: document.getElementById("start-btn"),
@@ -87,6 +93,18 @@ const elements = {
   databaseIndexLink: document.getElementById("database-index-link"),
   selectedBookLink: document.getElementById("selected-book-link"),
 };
+
+function currentPracticeMode() {
+  return state.session?.mode || elements.modeSelect.value;
+}
+
+function practiceModeLabel(mode) {
+  return PRACTICE_MODE_LABELS[mode] || PRACTICE_MODE_LABELS.line;
+}
+
+function capitalize(word) {
+  return word ? `${word[0].toUpperCase()}${word.slice(1)}` : "";
+}
 
 function pieceSvg(piece) {
   const art = PIECE_ART[piece.toLowerCase()];
@@ -249,11 +267,11 @@ function targetsForSelectedSquare() {
   return movesByFromSquare()[state.selectedSquare] || [];
 }
 
-function weightedChoice(nodes) {
-  const total = nodes.reduce((sum, node) => sum + node.count, 0);
+function weightedChoice(nodes, weightFor = (node) => node.count) {
+  const total = nodes.reduce((sum, node) => sum + Math.max(1, Number(weightFor(node)) || 0), 0);
   let roll = Math.random() * total;
   for (const node of nodes) {
-    roll -= node.count;
+    roll -= Math.max(1, Number(weightFor(node)) || 0);
     if (roll <= 0) {
       return node;
     }
@@ -270,6 +288,23 @@ function openingMove(node) {
     label: `${Math.floor((node.ply + 1) / 2)}${node.ply % 2 === 1 ? "." : "..."} ${node.san}`,
     count: node.count,
   };
+}
+
+function formatStartingLine(path, maxPlies = 8) {
+  if (!path.length) {
+    return "the starting position";
+  }
+
+  const visibleMoves = path.slice(0, maxPlies);
+  const segments = [];
+  for (let index = 0; index < visibleMoves.length; index += 2) {
+    const whiteMove = visibleMoves[index];
+    const blackMove = visibleMoves[index + 1];
+    const moveNumber = Math.floor((whiteMove.ply + 1) / 2);
+    segments.push(`${moveNumber}. ${whiteMove.san}${blackMove ? ` ${blackMove.san}` : ""}`);
+  }
+
+  return `${segments.join(" ")}${path.length > maxPlies ? " ..." : ""}`;
 }
 
 function syncSessionDerived(session) {
@@ -400,8 +435,8 @@ function advanceTrainer(session) {
   return replies;
 }
 
-function createSession(book, userColor, depthLimit) {
-  const session = {
+function buildSession(book, userColor, depthLimit, mode) {
+  return {
     opening: {
       id: book.id,
       name: book.name,
@@ -409,6 +444,7 @@ function createSession(book, userColor, depthLimit) {
       fileName: book.fileName,
       relativePath: book.relativePath,
     },
+    mode,
     userColor,
     depthLimit,
     currentNode: book.root,
@@ -419,6 +455,61 @@ function createSession(book, userColor, depthLimit) {
     completed: false,
     message: "",
   };
+}
+
+function applyStartingPath(session, path) {
+  for (const node of path) {
+    applyChild(session, node, "setup");
+  }
+}
+
+function collectDrillCandidates(node, depthLimit, userColor, minimumPly, path = [], candidates = []) {
+  const currentPath = node.ply ? [...path, node] : path;
+  const children = availableChildren(node, depthLimit);
+
+  if (
+    node.ply >= minimumPly &&
+    node.ply < depthLimit &&
+    sideToMoveFromPly(node.ply) === userColor &&
+    children.length
+  ) {
+    candidates.push({
+      node,
+      path: currentPath,
+      weight: Math.max(
+        1,
+        node.count || children.reduce((sum, child) => sum + child.count, 0),
+      ),
+    });
+  }
+
+  for (const child of children) {
+    collectDrillCandidates(child, depthLimit, userColor, minimumPly, currentPath, candidates);
+  }
+
+  return candidates;
+}
+
+function drillMinimumPlyOptions(userColor, depthLimit) {
+  const preferred = userColor === "white" ? 4 : 5;
+  const fallback = userColor === "white" ? 2 : 1;
+  const maximumStart = Math.max(0, depthLimit - 1);
+  const values = [Math.min(preferred, maximumStart), Math.min(fallback, maximumStart), 0];
+  return [...new Set(values)].filter((value) => value >= 0).sort((a, b) => b - a);
+}
+
+function pickDrillCandidate(book, userColor, depthLimit) {
+  for (const minimumPly of drillMinimumPlyOptions(userColor, depthLimit)) {
+    const candidates = collectDrillCandidates(book.root, depthLimit, userColor, minimumPly);
+    if (candidates.length) {
+      return weightedChoice(candidates, (candidate) => candidate.weight);
+    }
+  }
+  return null;
+}
+
+function createLineSession(book, userColor, depthLimit) {
+  const session = buildSession(book, userColor, depthLimit, "line");
 
   const trainerMoves = advanceTrainer(session);
   if (session.completed) {
@@ -431,9 +522,41 @@ function createSession(book, userColor, depthLimit) {
   return session;
 }
 
+function createPositionSession(book, userColor, depthLimit) {
+  const session = buildSession(book, userColor, depthLimit, "position");
+  const candidate = pickDrillCandidate(book, userColor, depthLimit);
+
+  if (!candidate) {
+    const fallback = createLineSession(book, userColor, depthLimit);
+    fallback.mode = "position";
+    fallback.message = `No deeper drill position was available at this depth, so training started from move 1. ${fallback.message}`;
+    return fallback;
+  }
+
+  applyStartingPath(session, candidate.path);
+  syncSessionDerived(session);
+
+  if (session.completed || !session.allowedMoves.length) {
+    session.completed = true;
+    session.message = "This drill position is already complete at the selected depth.";
+    return session;
+  }
+
+  session.message = `Position drill starts after ${formatStartingLine(candidate.path)}. Play the correct move for ${capitalize(userColor)}.`;
+  return session;
+}
+
+function createSession(book, userColor, depthLimit, mode = "line") {
+  return mode === "position"
+    ? createPositionSession(book, userColor, depthLimit)
+    : createLineSession(book, userColor, depthLimit);
+}
+
 function playMove(session, move) {
   if (session.completed) {
-    session.message = "This line is finished. Reset to try another branch.";
+    session.message = session.mode === "position"
+      ? "This drill is finished. Start a new drill to try another position."
+      : "This line is finished. Reset to try another branch.";
     return { ok: false, session };
   }
 
@@ -453,7 +576,9 @@ function playMove(session, move) {
   applyChild(session, selected, "you");
   const trainerMoves = advanceTrainer(session);
   if (session.completed) {
-    session.message = "Correct. You reached the end of this stored opening branch.";
+    session.message = session.mode === "position"
+      ? "Correct. You reached the end of this drill branch."
+      : "Correct. You reached the end of this stored opening branch.";
   } else if (trainerMoves.length) {
     session.message = `Correct. Trainer replies with ${trainerMoves.join(" ")}.`;
   } else {
@@ -538,9 +663,14 @@ function renderExpectedMoves() {
   elements.expectedMoves.innerHTML = "";
   if (!moves.length) {
     elements.expectedMoves.className = "chip-row empty";
-    elements.expectedMoves.textContent = state.session?.completed
-      ? "This branch is complete."
+    const idleMessage = currentPracticeMode() === "position"
+      ? "Start a position drill to jump into a book position."
       : "Tap Start Practice to see the opening moves here.";
+    elements.expectedMoves.textContent = state.session?.completed
+      ? currentPracticeMode() === "position"
+        ? "This drill position is complete."
+        : "This branch is complete."
+      : idleMessage;
     return;
   }
 
@@ -562,7 +692,11 @@ function movePill(move) {
   }
   pill.className = `move-pill ${move.actor}`;
   pill.textContent = move.san;
-  pill.title = move.actor === "you" ? "Your move" : "Trainer move";
+  pill.title = move.actor === "you"
+    ? "Your move"
+    : move.actor === "setup"
+      ? "Starting position move"
+      : "Trainer move";
   return pill;
 }
 
@@ -601,7 +735,7 @@ function renderSessionHeader() {
     : "Load an opening to see its repertoire group and source file.";
 
   const depth = state.session?.depthLimit || Number(elements.depthSelect.value);
-  elements.depthPill.textContent = `Depth ${depth} plies`;
+  elements.depthPill.textContent = `${practiceModeLabel(currentPracticeMode())} • ${depth} plies`;
 
   if (!state.session) {
     elements.turnPill.className = "pill neutral";
@@ -611,7 +745,7 @@ function renderSessionHeader() {
 
   if (state.session.completed) {
     elements.turnPill.className = "pill subtle";
-    elements.turnPill.textContent = "Line Complete";
+    elements.turnPill.textContent = state.session.mode === "position" ? "Drill Complete" : "Line Complete";
     return;
   }
 
@@ -622,6 +756,13 @@ function renderSessionHeader() {
 
 function renderOfflineStatus() {
   elements.offlineStatus.textContent = state.offlineStatus;
+}
+
+function renderPracticeModeNote() {
+  const mode = currentPracticeMode();
+  elements.modeNote.textContent = mode === "position"
+    ? "Jump to a random book position and find the correct continuation."
+    : "Start from move 1 and answer the trainer's book moves.";
 }
 
 function renderDatabaseSummary() {
@@ -841,9 +982,15 @@ function renderVariationTree() {
 function updateButtons() {
   const canStart =
     Boolean(state.selectedOpeningId) && Boolean(state.selectedBook) && !state.loadingBook;
+  const mode = state.session?.mode || elements.modeSelect.value;
   elements.startBtn.disabled = !canStart || state.startingSession || state.loadingDatabase;
   elements.resetBtn.disabled = !state.session || state.startingSession || state.loadingBook;
-  elements.startBtn.textContent = state.startingSession ? "Starting..." : "Start Practice";
+  elements.resetBtn.textContent = mode === "position" ? "New Drill" : "Reset";
+  if (state.startingSession) {
+    elements.startBtn.textContent = mode === "position" ? "Setting Drill..." : "Starting...";
+    return;
+  }
+  elements.startBtn.textContent = mode === "position" ? "Start Drill" : "Start Practice";
 }
 
 function renderAll() {
@@ -853,6 +1000,7 @@ function renderAll() {
   renderHistory();
   renderSessionHeader();
   renderOfflineStatus();
+  renderPracticeModeNote();
   renderDatabaseSummary();
   renderCategoryFilters();
   renderOpenings();
@@ -941,7 +1089,7 @@ async function selectOpening(openingId) {
   try {
     state.selectedBook = await loadBook(opening);
     state.statusMessage =
-      "Opening loaded. Press Start Practice, then tap a highlighted piece and its target square.";
+      "Opening loaded. Start line play or a position drill, then tap a highlighted piece and its target square.";
   } catch (error) {
     state.feedbackTone = "error";
     state.statusMessage = error.message;
@@ -959,7 +1107,9 @@ async function startPractice() {
   state.selectedSquare = null;
   state.startingSession = true;
   state.feedbackTone = "neutral";
-  state.statusMessage = "Starting a practice line...";
+  state.statusMessage = elements.modeSelect.value === "position"
+    ? "Loading a drill position..."
+    : "Starting a practice line...";
   renderAll();
 
   try {
@@ -967,6 +1117,7 @@ async function startPractice() {
       state.selectedBook,
       elements.sideSelect.value,
       Number(elements.depthSelect.value),
+      elements.modeSelect.value,
     );
     state.feedbackTone = state.session.completed ? "complete" : "success";
     state.statusMessage = state.session.message;
@@ -989,6 +1140,7 @@ function resetPractice() {
     state.selectedBook,
     state.session.userColor,
     state.session.depthLimit,
+    state.session.mode,
   );
   state.feedbackTone = state.session.completed ? "complete" : "neutral";
   state.statusMessage = state.session.message;
@@ -1082,6 +1234,16 @@ elements.board.addEventListener("click", (event) => {
 elements.searchInput.addEventListener("input", (event) => {
   state.search = event.target.value;
   renderOpenings();
+});
+
+elements.modeSelect.addEventListener("change", () => {
+  if (!state.session && !state.loadingDatabase && !state.loadingBook) {
+    state.feedbackTone = "neutral";
+    state.statusMessage = elements.modeSelect.value === "position"
+      ? "Position drill will jump to a random book position before your move."
+      : "Line play starts from move 1 and expects the correct continuation.";
+  }
+  renderAll();
 });
 
 elements.depthSelect.addEventListener("change", () => {

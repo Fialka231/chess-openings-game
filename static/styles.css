@@ -14,7 +14,7 @@
   --board-light: #ecdcbf;
   --board-dark: #7a5945;
   --board-selected: #f0ca78;
-  --board-target: rgba(68, 124, 78, 0.82);
+  --board-target: rgba(30, 76, 39, 0.96);
   --board-last: rgba(180, 94, 58, 0.24);
   --piece-white-fill: #f7f0e0;
   --piece-white-stroke: #3b2a20;
@@ -243,16 +243,17 @@ select {
 }
 
 .square.target::after {
-  inset: 39%;
+  inset: 36%;
   border-radius: 999px;
   background: var(--board-target);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14);
   z-index: 1;
 }
 
 .square.target.occupied::after {
   inset: 14%;
   background: transparent;
-  border: 4px solid var(--board-target);
+  border: 5px solid var(--board-target);
 }
 
 .piece {
@@ -464,10 +465,20 @@ select {
   background: rgba(67, 104, 73, 0.15);
 }
 
+.move-pill.setup {
+  background: rgba(49, 64, 51, 0.12);
+  color: var(--olive);
+}
+
 .control-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.control-note {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .split-controls {
