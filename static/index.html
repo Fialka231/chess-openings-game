@@ -66,7 +66,7 @@
                   Start a line or drill to see an evaluation of the current position.
                 </p>
                 <div id="engine-best" class="engine-best subtle-copy">
-                  Live engine analysis is available when the app is served locally with a Stockfish executable.
+                  The app can use a local engine or bundled browser Stockfish for phone-friendly analysis.
                 </div>
               </div>
 
@@ -158,6 +158,16 @@
               >
                 Realistic Drill
               </button>
+              <button
+                id="exam-tab"
+                class="practice-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="exam-panel"
+              >
+                Blind Recall
+              </button>
             </div>
 
             <section
@@ -222,6 +232,44 @@
                   <div class="drill-stat">
                     <strong>reset</strong>
                     <span>on wrong move</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="exam-panel"
+              class="mode-panel"
+              role="tabpanel"
+              aria-labelledby="exam-tab"
+              hidden
+            >
+              <p class="subtle-copy mode-copy">
+                Jump into a random opening from the full database with no move hints.
+                Every legal move can be played, but only the stored book continuation is marked correct.
+                Wrong moves reset the same test position so you can try again immediately.
+              </p>
+              <div class="split-controls">
+                <div class="control-block">
+                  <label class="panel-label" for="exam-side-select">Practice side</label>
+                  <select id="exam-side-select">
+                    <option value="white">White</option>
+                    <option value="black">Black</option>
+                  </select>
+                </div>
+
+                <div class="drill-stats" aria-label="Blind recall format">
+                  <div class="drill-stat">
+                    <strong>hidden</strong>
+                    <span>no move hints</span>
+                  </div>
+                  <div class="drill-stat">
+                    <strong>legal</strong>
+                    <span>all moves allowed</span>
+                  </div>
+                  <div class="drill-stat">
+                    <strong>reset</strong>
+                    <span>retry same test</span>
                   </div>
                 </div>
               </div>

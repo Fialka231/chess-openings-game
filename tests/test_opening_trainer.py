@@ -9,6 +9,7 @@ import chess
 from opening_trainer import (
     PROJECT_ROOT,
     OpeningTrainerState,
+    StaticAppHandler,
     discover_stockfish_binary,
     format_engine_score,
 )
@@ -120,6 +121,18 @@ class OpeningTrainerTests(unittest.TestCase):
             with mock.patch.dict("os.environ", {"OPENING_TRAINER_ENGINE": str(engine_path)}):
                 discovered_from_env = discover_stockfish_binary(PROJECT_ROOT)
             self.assertEqual(discovered_from_env, engine_path)
+
+    def test_browser_stockfish_assets_are_present(self) -> None:
+        vendor_root = PROJECT_ROOT / "static" / "vendor" / "stockfish"
+        self.assertTrue((vendor_root / "stockfish-18-lite-single.js").exists())
+        self.assertTrue((vendor_root / "stockfish-18-lite-single.wasm").exists())
+        self.assertTrue((vendor_root / "COPYING.txt").exists())
+
+    def test_static_handler_serves_wasm_with_expected_mime_type(self) -> None:
+        self.assertEqual(
+            StaticAppHandler.extensions_map.get(".wasm"),
+            "application/wasm",
+        )
 
 
 if __name__ == "__main__":

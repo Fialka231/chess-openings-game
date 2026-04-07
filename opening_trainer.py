@@ -800,6 +800,11 @@ class OpeningTrainerServer(ThreadingHTTPServer):
 
 
 class StaticAppHandler(SimpleHTTPRequestHandler):
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".wasm": "application/wasm",
+    }
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(STATIC_ROOT), **kwargs)
 

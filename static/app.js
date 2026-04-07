@@ -1,6 +1,9 @@
 const DATABASE_URLS = ["./data/database.json", "./data/library.json"];
 const ENGINE_STATUS_URL = "./api/engine/status";
 const ENGINE_EVALUATE_URL = "./api/evaluate";
+const BROWSER_STOCKFISH_SCRIPT = "./vendor/stockfish/stockfish-18-lite-single.js";
+const BROWSER_ENGINE_READY_TIMEOUT_MS = 15000;
+const BROWSER_ENGINE_COMMAND_TIMEOUT_MS = 20000;
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const PIECE_ART = {
   p: `
@@ -48,6 +51,7 @@ const MAX_TREE_NODES = 240;
 const PRACTICE_MODE_LABELS = {
   line: "Line Play",
   position: "Realistic Drill",
+  exam: "Blind Recall",
 };
 const DRILL_PRIMARY_START_MIN_PLY = 4;
 const DRILL_PRIMARY_START_MAX_PLY = 6;
@@ -55,6 +59,7 @@ const DRILL_FALLBACK_START_MIN_PLY = 2;
 const DRILL_FALLBACK_START_MAX_PLY = 8;
 const DRILL_PREFERRED_SPANS = [6, 4];
 const DRILL_FALLBACK_SPANS = [2];
+const CLIENT_ENGINE_DEPTH = 9;
 
 const state = {
   openings: [],
@@ -63,12 +68,13 @@ const state = {
   engine: {
     available: null,
     loading: false,
+    source: "none",
     message: "Checking whether live Stockfish analysis is available...",
     scoreText: "Waiting",
     scoreTone: "neutral",
     detailText: "Start a line or drill to see an evaluation of the current position.",
     bestLineText:
-      "Live engine analysis is available when the app is served locally with a Stockfish executable.",
+      "The app will use a local engine when available, or browser Stockfish on phone and offline installs.",
     lastFen: null,
     requestId: 0,
   },
@@ -102,11 +108,14 @@ const elements = {
   searchInput: document.getElementById("search-input"),
   lineTab: document.getElementById("line-tab"),
   positionTab: document.getElementById("position-tab"),
+  examTab: document.getElementById("exam-tab"),
   linePanel: document.getElementById("line-panel"),
   positionPanel: document.getElementById("position-panel"),
+  examPanel: document.getElementById("exam-panel"),
   lineSideSelect: document.getElementById("line-side-select"),
   lineDepthSelect: document.getElementById("line-depth-select"),
   drillSideSelect: document.getElementById("drill-side-select"),
+  examSideSelect: document.getElementById("exam-side-select"),
   startBtn: document.getElementById("start-btn"),
   resetBtn: document.getElementById("reset-btn"),
   turnPill: document.getElementById("turn-pill"),
@@ -121,6 +130,8 @@ const elements = {
   engineDetail: document.getElementById("engine-detail"),
   engineBest: document.getElementById("engine-best"),
 };
+
+let browserEnginePromise = null;
 
 function currentPracticeMode() {
   return state.activeMode;
@@ -139,9 +150,13 @@ function pluralize(count, singular, plural = `${singular}s`) {
 }
 
 function currentSideSelection() {
-  return currentPracticeMode() === "position"
-    ? elements.drillSideSelect?.value || "white"
-    : elements.lineSideSelect?.value || "white";
+  if (currentPracticeMode() === "position") {
+    return elements.drillSideSelect?.value || "white";
+  }
+  if (currentPracticeMode() === "exam") {
+    return elements.examSideSelect?.value || "white";
+  }
+  return elements.lineSideSelect?.value || "white";
 }
 
 function currentLineDepth() {
@@ -154,6 +169,9 @@ function syncSideSelectors(value) {
   }
   if (elements.drillSideSelect) {
     elements.drillSideSelect.value = value;
+  }
+  if (elements.examSideSelect) {
+    elements.examSideSelect.value = value;
   }
 }
 
@@ -325,6 +343,214 @@ function currentSessionFen() {
   );
 }
 
+function createBrowserEngine() {
+  if (typeof Worker !== "function") {
+    return Promise.reject(
+      new Error("This browser does not support Web Workers, so browser Stockfish cannot start."),
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(BROWSER_STOCKFISH_SCRIPT);
+    const engine = {
+      worker,
+      pending: null,
+      queue: Promise.resolve(),
+    };
+
+    function finishPending(error, lines = []) {
+      if (!engine.pending) {
+        return;
+      }
+      const pending = engine.pending;
+      engine.pending = null;
+      clearTimeout(pending.timeoutId);
+      if (error) {
+        pending.reject(error);
+      } else {
+        pending.resolve(lines);
+      }
+    }
+
+    function handleWorkerMessage(event) {
+      const line = String(event.data || "").trim();
+      if (!line || !engine.pending) {
+        return;
+      }
+      engine.pending.lines.push(line);
+      if (engine.pending.isDone(line, engine.pending.lines)) {
+        finishPending(null, [...engine.pending.lines]);
+      }
+    }
+
+    function handleWorkerError() {
+      finishPending(new Error("Browser Stockfish stopped unexpectedly."));
+      browserEnginePromise = null;
+      reject(new Error("Browser Stockfish could not be started on this device."));
+    }
+
+    worker.addEventListener("message", handleWorkerMessage);
+    worker.addEventListener("error", handleWorkerError);
+    worker.addEventListener("messageerror", handleWorkerError);
+
+    function enqueue(commands, isDone, timeoutMs = BROWSER_ENGINE_COMMAND_TIMEOUT_MS) {
+      const run = () =>
+        new Promise((commandResolve, commandReject) => {
+          if (engine.pending) {
+            commandReject(new Error("Browser Stockfish is still processing the previous command."));
+            return;
+          }
+          const pending = {
+            lines: [],
+            isDone,
+            resolve: commandResolve,
+            reject: commandReject,
+            timeoutId: window.setTimeout(() => {
+              if (engine.pending === pending) {
+                finishPending(
+                  new Error("Browser Stockfish did not answer in time."),
+                );
+              }
+            }, timeoutMs),
+          };
+          engine.pending = pending;
+          for (const command of commands) {
+            worker.postMessage(command);
+          }
+        });
+
+      engine.queue = engine.queue.catch(() => null).then(run);
+      return engine.queue;
+    }
+
+    engine.enqueue = enqueue;
+
+    enqueue(["uci"], (line) => line === "uciok", BROWSER_ENGINE_READY_TIMEOUT_MS)
+      .then(() =>
+        enqueue(
+          ["isready"],
+          (line) => line === "readyok",
+          BROWSER_ENGINE_READY_TIMEOUT_MS,
+        ),
+      )
+      .then(() => resolve(engine))
+      .catch((error) => {
+        worker.terminate();
+        browserEnginePromise = null;
+        reject(error);
+      });
+  });
+}
+
+function ensureBrowserEngineReady() {
+  if (!browserEnginePromise) {
+    browserEnginePromise = createBrowserEngine().catch((error) => {
+      browserEnginePromise = null;
+      throw error;
+    });
+  }
+  return browserEnginePromise;
+}
+
+function parseBrowserSearchInfo(lines) {
+  let bestInfo = null;
+  let bestMove = null;
+
+  for (const line of lines) {
+    if (line.startsWith("bestmove ")) {
+      bestMove = line.split(/\s+/)[1] || null;
+      continue;
+    }
+    if (!line.startsWith("info ") || !line.includes(" score ")) {
+      continue;
+    }
+
+    const depthMatch = line.match(/\bdepth\s+(\d+)/);
+    const scoreMatch = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
+    if (!scoreMatch) {
+      continue;
+    }
+
+    const pvMatch = line.match(/\spv\s+(.+)$/);
+    const nextInfo = {
+      depth: depthMatch ? Number(depthMatch[1]) : 0,
+      kind: scoreMatch[1],
+      value: Number(scoreMatch[2]),
+      pv: pvMatch ? pvMatch[1].trim().split(/\s+/).filter(Boolean) : [],
+    };
+
+    if (!bestInfo || nextInfo.depth >= bestInfo.depth) {
+      bestInfo = nextInfo;
+    }
+  }
+
+  return { bestInfo, bestMove };
+}
+
+function formatBrowserScore(kind, value) {
+  if (kind === "mate") {
+    const plyCount = Math.abs(value);
+    return {
+      kind,
+      text: `${value > 0 ? "+" : "-"}M${plyCount}`,
+      detail:
+        value > 0
+          ? `White has a forced mate in ${plyCount}.`
+          : `Black has a forced mate in ${plyCount}.`,
+    };
+  }
+
+  const pawns = value / 100;
+  const absolute = Math.abs(pawns).toFixed(2);
+  return {
+    kind,
+    text: pawns > 0 ? `+${absolute}` : pawns < 0 ? `-${absolute}` : "+0.00",
+    detail:
+      pawns > 0
+        ? `White is better by about ${absolute} pawns.`
+        : pawns < 0
+          ? `Black is better by about ${absolute} pawns.`
+          : "Stockfish sees the position as equal.",
+  };
+}
+
+function parseBrowserLegalMoves(lines) {
+  const legalMoves = [];
+  for (const line of lines) {
+    const match = line.match(/^([a-h][1-8][a-h][1-8][nbrq]?):\s+\d+/i);
+    if (match) {
+      legalMoves.push(match[1].toLowerCase());
+    }
+  }
+  return legalMoves;
+}
+
+async function requestBrowserEvaluation(fen) {
+  const engine = await ensureBrowserEngineReady();
+  const lines = await engine.enqueue(
+    [`position fen ${fen}`, `go depth ${CLIENT_ENGINE_DEPTH}`],
+    (line) => line.startsWith("bestmove "),
+  );
+  const { bestInfo, bestMove } = parseBrowserSearchInfo(lines);
+  return {
+    available: true,
+    source: "browser",
+    depth: bestInfo?.depth || CLIENT_ENGINE_DEPTH,
+    score: bestInfo ? formatBrowserScore(bestInfo.kind, bestInfo.value) : null,
+    bestMove,
+    pv: bestInfo?.pv || [],
+  };
+}
+
+async function requestBrowserLegalMoves(fen) {
+  const engine = await ensureBrowserEngineReady();
+  const lines = await engine.enqueue(
+    [`position fen ${fen}`, "go perft 1"],
+    (line) => line.startsWith("Nodes searched:"),
+  );
+  return parseBrowserLegalMoves(lines);
+}
+
 function expandNode(node, ply = 0) {
   return {
     san: node.s,
@@ -408,6 +634,25 @@ function openingMove(node) {
   };
 }
 
+function legalMoveOption(uci) {
+  return {
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    promotion: uci.slice(4) || null,
+    san: uci,
+    label: uci,
+    count: 0,
+  };
+}
+
+function cloneMoveOption(move) {
+  return { ...move };
+}
+
+function moveUci(move) {
+  return `${move.from}${move.to}${move.promotion || ""}`;
+}
+
 function formatStartingLine(path, maxPlies = 8) {
   if (!path.length) {
     return "the starting position";
@@ -427,8 +672,13 @@ function formatStartingLine(path, maxPlies = 8) {
 
 function syncSessionDerived(session) {
   const children = availableChildren(session.currentNode, session.depthLimit);
-  session.allowedMoves = children.map(openingMove);
-  session.expectedMoves = children.map((child) => child.san);
+  session.correctMoves = children.map(openingMove);
+  session.allowedMoves = session.mode === "exam"
+    ? (session.legalMoves || []).map(cloneMoveOption)
+    : session.correctMoves.map(cloneMoveOption);
+  session.expectedMoves = session.mode === "exam"
+    ? []
+    : children.map((child) => child.san);
   session.completed = session.completed || children.length === 0;
 }
 
@@ -569,7 +819,9 @@ function buildSession(book, userColor, depthLimit, mode) {
     board: createInitialBoard(),
     history: [],
     allowedMoves: [],
+    correctMoves: [],
     expectedMoves: [],
+    legalMoves: [],
     completed: false,
     message: "",
     drill: null,
@@ -696,6 +948,9 @@ function resetPositionSession(session, prefix = "Wrong move.") {
   session.history = copyHistoryEntries(session.drill.startHistory);
   session.depthLimit = session.drill.endPly;
   session.completed = false;
+  session.legalMoves = session.mode === "exam" && session.drill.startLegalMoves
+    ? session.drill.startLegalMoves.map(cloneMoveOption)
+    : [];
   syncSessionDerived(session);
   session.message = `${prefix} The drill position has been reset. ${remainingDrillGoalMessage(session)}`;
   return session;
@@ -750,16 +1005,103 @@ function createPositionSession(book, userColor, depthLimit, presetCandidate = nu
   return session;
 }
 
+function createExamSession(book, userColor, depthLimit, presetCandidate = null) {
+  const candidate = presetCandidate || pickDrillCandidate(book, userColor);
+
+  if (!candidate) {
+    const fallback = buildSession(book, userColor, depthLimit, "exam");
+    const trainerMoves = advanceTrainer(fallback);
+    fallback.drill = {
+      startNode: fallback.currentNode,
+      startBoard: cloneBoard(fallback.board),
+      startHistory: copyHistoryEntries(fallback.history),
+      startLabel: trainerMoves.length ? trainerMoves.join(" ") : "the starting position",
+      endPly: fallback.depthLimit,
+      goalMessage: "No hints are shown. Play the correct continuation from move 1.",
+      startLegalMoves: [],
+    };
+    fallback.message = trainerMoves.length
+      ? `Blind recall starts from move 1 in ${book.name}. Trainer plays ${trainerMoves.join(" ")}. No hints are shown.`
+      : `Blind recall starts from move 1 in ${book.name}. No hints are shown.`;
+    fallback.legalMoves = [];
+    syncSessionDerived(fallback);
+    return fallback;
+  }
+
+  const session = buildSession(book, userColor, candidate.node.ply + candidate.span, "exam");
+  applyStartingPath(session, candidate.path);
+  syncSessionDerived(session);
+
+  if (session.completed || !session.correctMoves.length) {
+    session.completed = true;
+    session.message = "This blind recall position is already complete at the selected depth.";
+    return session;
+  }
+
+  const startLabel = formatStartingLine(candidate.path);
+  const introPrefix = candidate.fallbackMessage ? `${candidate.fallbackMessage} ` : "";
+  const goalMessage = `No hints are shown. ${drillGoalMessage(userColor, candidate.span)}`;
+  session.drill = {
+    startNode: candidate.node,
+    startBoard: cloneBoard(session.board),
+    startHistory: copyHistoryEntries(session.history),
+    startLabel,
+    endPly: session.depthLimit,
+    goalMessage,
+    startLegalMoves: [],
+  };
+  session.message = `${introPrefix}Blind recall starts after ${startLabel}. ${goalMessage}`;
+  session.legalMoves = [];
+  syncSessionDerived(session);
+  return session;
+}
+
 function createSession(book, userColor, depthLimit, mode = "line") {
-  return mode === "position"
-    ? createPositionSession(book, userColor, depthLimit)
-    : createLineSession(book, userColor, depthLimit);
+  if (mode === "position") {
+    return createPositionSession(book, userColor, depthLimit);
+  }
+  if (mode === "exam") {
+    return createExamSession(book, userColor, depthLimit);
+  }
+  return createLineSession(book, userColor, depthLimit);
+}
+
+async function refreshExamLegalMoves(session) {
+  if (!session || session.mode !== "exam" || session.completed) {
+    return;
+  }
+
+  const fen = boardToFen(
+    session.board,
+    session.currentNode?.ply || session.history.length || 0,
+  );
+  const legalMoves = await requestBrowserLegalMoves(fen);
+  const latestFen = boardToFen(
+    session.board,
+    session.currentNode?.ply || session.history.length || 0,
+  );
+  if (session !== state.session || latestFen !== fen) {
+    return;
+  }
+
+  session.legalMoves = legalMoves.map(legalMoveOption);
+  syncSessionDerived(session);
+
+  if (
+    session.drill &&
+    session.currentNode === session.drill.startNode &&
+    !session.drill.startLegalMoves.length
+  ) {
+    session.drill.startLegalMoves = session.legalMoves.map(cloneMoveOption);
+  }
 }
 
 function playMove(session, move) {
   if (session.completed) {
     session.message = session.mode === "position"
       ? "This realistic drill is finished. Start a new drill to try another opening."
+      : session.mode === "exam"
+        ? "This blind recall is finished. Start a new test to try another opening."
       : "This line is finished. Reset to try another branch.";
     return { ok: false, session };
   }
@@ -770,11 +1112,18 @@ function playMove(session, move) {
   }
 
   const children = availableChildren(session.currentNode, session.depthLimit);
-  const selected = children.find((child) => child.uci === `${move.from}${move.to}${move.promotion || ""}`);
+  const selected = children.find((child) => child.uci === moveUci(move));
   if (!selected) {
     if (session.mode === "position" && session.drill) {
       resetPositionSession(session);
       return { ok: false, session };
+    }
+    if (session.mode === "exam" && session.drill) {
+      resetPositionSession(
+        session,
+        `Incorrect. ${moveUci(move)} is legal here, but it is not the stored opening move.`,
+      );
+      return { ok: false, session, refreshLegalMoves: true };
     }
     const expected = children.slice(0, 6).map((child) => child.san).join(", ");
     session.message = `That move is outside the selected opening here. Try one of: ${expected || "the highlighted moves"}.`;
@@ -786,15 +1135,21 @@ function playMove(session, move) {
   if (session.completed) {
     session.message = session.mode === "position"
       ? "Correct. You solved this drill."
+      : session.mode === "exam"
+        ? "Correct. You solved this blind recall."
       : "Correct. You reached the end of this stored opening branch.";
   } else if (trainerMoves.length) {
     if (session.mode === "position" && session.drill) {
       session.message = `Correct. Trainer replies with ${trainerMoves.join(" ")}. ${remainingDrillGoalMessage(session)}`;
+    } else if (session.mode === "exam" && session.drill) {
+      session.message = `Correct. Trainer replies with ${trainerMoves.join(" ")}. No hints are shown. ${remainingDrillGoalMessage(session)}`;
     } else {
       session.message = `Correct. Trainer replies with ${trainerMoves.join(" ")}.`;
     }
   } else {
-    session.message = "Correct. Continue from the current position.";
+    session.message = session.mode === "exam"
+      ? "Correct. No hints are shown from here."
+      : "Correct. Continue from the current position.";
   }
   syncSessionDerived(session);
   return { ok: true, session };
@@ -813,7 +1168,9 @@ function setEngineIdleState(
   state.engine.scoreTone = "neutral";
   state.engine.detailText = detailText;
   state.engine.bestLineText = state.engine.available === true
-    ? "Stockfish will evaluate the current board as soon as practice starts."
+    ? state.engine.source === "browser"
+      ? "Browser Stockfish is ready, so evaluation also works on phone and offline web installs."
+      : "Local Stockfish will evaluate the current board as soon as practice starts."
     : state.engine.message;
 }
 
@@ -853,13 +1210,26 @@ async function requestEngineEvaluation() {
   renderEngineCard();
 
   try {
-    const payload = await requestJson(ENGINE_EVALUATE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ fen }),
-    });
+    let payload = null;
+    try {
+      payload = state.engine.source === "server"
+        ? await requestJson(ENGINE_EVALUATE_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ fen }),
+          })
+        : await requestBrowserEvaluation(fen);
+    } catch (primaryError) {
+      if (state.engine.source !== "server") {
+        throw primaryError;
+      }
+      await ensureBrowserEngineReady();
+      state.engine.source = "browser";
+      state.engine.message = "Local engine fell back to browser Stockfish.";
+      payload = await requestBrowserEvaluation(fen);
+    }
 
     if (requestId !== state.engine.requestId || currentSessionFen() !== fen) {
       return;
@@ -867,10 +1237,13 @@ async function requestEngineEvaluation() {
 
     state.engine.loading = false;
     state.engine.available = Boolean(payload.available);
+    state.engine.source = payload.source || state.engine.source || "browser";
     state.engine.lastFen = fen;
-    state.engine.message = payload.path
-      ? `Stockfish depth ${payload.depth} • ${payload.timeMs} ms budget`
-      : "Stockfish evaluation is ready.";
+    state.engine.message = state.engine.source === "server"
+      ? payload.path
+        ? `Local Stockfish depth ${payload.depth} • ${payload.timeMs} ms budget`
+        : "Local Stockfish evaluation is ready."
+      : `Browser Stockfish depth ${payload.depth} • runs on this device`;
     state.engine.scoreText = payload.score?.text || "n/a";
     state.engine.scoreTone = payload.score?.text?.startsWith("-")
       ? "black-edge"
@@ -887,15 +1260,16 @@ async function requestEngineEvaluation() {
     }
     const message = error instanceof Error ? error.message : String(error);
     state.engine.available = false;
+    state.engine.source = "none";
     state.engine.loading = false;
     state.engine.lastFen = null;
     state.engine.message =
-      "Live engine evaluation is unavailable here. GitHub Pages stays static, so Stockfish runs only through the local Python server.";
+      "Live engine evaluation is unavailable here. Browser Stockfish could not be started on this device.";
     state.engine.scoreText = "Off";
     state.engine.scoreTone = "neutral";
     state.engine.detailText = message;
     state.engine.bestLineText =
-      "Serve the app locally with a compiled Stockfish executable to see evaluations while you practice.";
+      `Browser Stockfish could not start here. Reload the app, or serve it locally with a native Stockfish binary if needed.`;
   }
 
   renderEngineCard();
@@ -972,15 +1346,29 @@ function renderFeedback() {
 }
 
 function renderExpectedMoves() {
+  const mode = state.session?.mode || currentPracticeMode();
   const moves = state.session?.expectedMoves || [];
   elements.expectedMoves.innerHTML = "";
+  if (mode === "exam") {
+    elements.expectedMoves.className = "chip-row empty";
+    if (state.session?.completed) {
+      elements.expectedMoves.textContent = "Blind Recall solved. Start a new test for another random position.";
+    } else if (state.session) {
+      elements.expectedMoves.textContent =
+        "Hints are hidden in Blind Recall. Every legal move can be played, but only book moves are accepted.";
+    } else {
+      elements.expectedMoves.textContent =
+        "Start Blind Recall to get a random opening position with no move hints.";
+    }
+    return;
+  }
   if (!moves.length) {
     elements.expectedMoves.className = "chip-row empty";
-    const idleMessage = currentPracticeMode() === "position"
+    const idleMessage = mode === "position"
       ? "Start Realistic Drill to jump into a random opening position."
       : "Tap Start Practice to see the opening moves here.";
     elements.expectedMoves.textContent = state.session?.completed
-      ? currentPracticeMode() === "position"
+      ? mode === "position"
         ? "This drill position is complete."
         : "This branch is complete."
       : idleMessage;
@@ -1046,13 +1434,19 @@ function renderSessionHeader() {
   elements.currentMeta.textContent = opening
     ? `${opening.category} • ${opening.relativePath || opening.fileName}`
     : currentPracticeMode() === "position"
-      ? "Realistic drill pulls a random opening from the full database each time."
-      : "Load an opening to see its repertoire group and source file.";
+      ? "Realistic Drill pulls a random opening from the full database each time."
+      : currentPracticeMode() === "exam"
+        ? "Blind Recall pulls a random opening from the full database and hides the next move."
+        : "Load an opening to see its repertoire group and source file.";
 
   if (state.session?.mode === "position") {
     elements.depthPill.textContent = "Realistic Drill • 2-3 move solve";
+  } else if (state.session?.mode === "exam") {
+    elements.depthPill.textContent = "Blind Recall • no hints";
   } else if (currentPracticeMode() === "position") {
     elements.depthPill.textContent = "Realistic Drill • random opening";
+  } else if (currentPracticeMode() === "exam") {
+    elements.depthPill.textContent = "Blind Recall • random opening";
   } else {
     const depth = state.session?.depthLimit || currentLineDepth();
     elements.depthPill.textContent = `${practiceModeLabel(currentPracticeMode())} • ${depth} plies`;
@@ -1066,7 +1460,11 @@ function renderSessionHeader() {
 
   if (state.session.completed) {
     elements.turnPill.className = "pill subtle";
-    elements.turnPill.textContent = state.session.mode === "position" ? "Drill Complete" : "Line Complete";
+    elements.turnPill.textContent = state.session.mode === "position"
+      ? "Drill Complete"
+      : state.session.mode === "exam"
+        ? "Recall Complete"
+        : "Line Complete";
     return;
   }
 
@@ -1081,18 +1479,29 @@ function renderOfflineStatus() {
 
 function renderPracticeModeTabs() {
   const mode = currentPracticeMode();
-  const lineActive = mode === "line";
-
-  if (!elements.lineTab || !elements.positionTab || !elements.linePanel || !elements.positionPanel) {
+  if (
+    !elements.lineTab ||
+    !elements.positionTab ||
+    !elements.examTab ||
+    !elements.linePanel ||
+    !elements.positionPanel ||
+    !elements.examPanel
+  ) {
     return;
   }
 
+  const lineActive = mode === "line";
+  const positionActive = mode === "position";
+  const examActive = mode === "exam";
   elements.lineTab.classList[lineActive ? "add" : "remove"]("active");
-  elements.positionTab.classList[lineActive ? "remove" : "add"]("active");
+  elements.positionTab.classList[positionActive ? "add" : "remove"]("active");
+  elements.examTab.classList[examActive ? "add" : "remove"]("active");
   elements.lineTab.setAttribute("aria-selected", String(lineActive));
-  elements.positionTab.setAttribute("aria-selected", String(!lineActive));
+  elements.positionTab.setAttribute("aria-selected", String(positionActive));
+  elements.examTab.setAttribute("aria-selected", String(examActive));
   elements.linePanel.hidden = !lineActive;
-  elements.positionPanel.hidden = lineActive;
+  elements.positionPanel.hidden = !positionActive;
+  elements.examPanel.hidden = !examActive;
 }
 
 function setActiveMode(mode) {
@@ -1108,16 +1517,22 @@ function setActiveMode(mode) {
   if (state.selectedBook) {
     state.statusMessage = mode === "position"
       ? "Realistic drill ready. Start a random opening puzzle from the full database."
+      : mode === "exam"
+        ? "Blind Recall ready. Start a random opening test with no move hints."
       : "Line play ready. Start from move 1 and follow the trainer's responses.";
   } else {
     state.statusMessage = mode === "position"
       ? "Realistic drill is ready. Start and the app will choose a random opening for you."
+      : mode === "exam"
+        ? "Blind Recall is ready. Start and the app will choose a random opening with no hints."
       : "Select an opening on the right, then start a practice session.";
   }
 
   setEngineIdleState(
     mode === "position"
       ? "Start realistic drill to evaluate a random opening position."
+      : mode === "exam"
+        ? "Start Blind Recall to evaluate a random opening position with browser or local Stockfish."
       : "Start line play to evaluate the current opening position.",
   );
   renderAll();
@@ -1339,17 +1754,29 @@ function renderVariationTree() {
 
 function updateButtons() {
   const mode = currentPracticeMode();
-  const canStart = mode === "position"
+  const canStart = mode === "position" || mode === "exam"
     ? state.openings.length > 0
     : Boolean(state.selectedOpeningId) && Boolean(state.selectedBook) && !state.loadingBook;
   elements.startBtn.disabled = !canStart || state.startingSession || state.loadingDatabase;
   elements.resetBtn.disabled = !state.session || state.startingSession || state.loadingBook;
-  elements.resetBtn.textContent = mode === "position" ? "New Drill" : "Reset";
+  elements.resetBtn.textContent = mode === "position"
+    ? "New Drill"
+    : mode === "exam"
+      ? "New Test"
+      : "Reset";
   if (state.startingSession) {
-    elements.startBtn.textContent = mode === "position" ? "Setting Drill..." : "Starting...";
+    elements.startBtn.textContent = mode === "position"
+      ? "Setting Drill..."
+      : mode === "exam"
+        ? "Setting Test..."
+        : "Starting...";
     return;
   }
-  elements.startBtn.textContent = mode === "position" ? "Start Realistic Drill" : "Start Practice";
+  elements.startBtn.textContent = mode === "position"
+    ? "Start Realistic Drill"
+    : mode === "exam"
+      ? "Start Blind Recall"
+      : "Start Practice";
 }
 
 function renderAll() {
@@ -1398,12 +1825,33 @@ async function requestJsonWithFallback(urls) {
 async function loadEngineStatus() {
   try {
     const payload = await requestJson(ENGINE_STATUS_URL);
-    state.engine.available = Boolean(payload.available);
-    state.engine.message = payload.message || "Stockfish engine status is ready.";
+    if (payload.available) {
+      state.engine.available = true;
+      state.engine.source = "server";
+      state.engine.message = payload.message || "Local Stockfish is ready.";
+    } else {
+      await ensureBrowserEngineReady();
+      state.engine.available = true;
+      state.engine.source = "browser";
+      state.engine.message =
+        "Browser Stockfish is ready, so evaluation also works on phones and offline installs.";
+    }
   } catch (_error) {
-    state.engine.available = false;
-    state.engine.message =
-      "No local Stockfish service was detected. GitHub Pages deploys stay static, so live evaluation only appears when the app is served locally.";
+    try {
+      await ensureBrowserEngineReady();
+      state.engine.available = true;
+      state.engine.source = "browser";
+      state.engine.message =
+        "Browser Stockfish is ready, so evaluation also works on phones and offline installs.";
+    } catch (browserError) {
+      state.engine.available = false;
+      state.engine.source = "none";
+      state.engine.message =
+        "Stockfish could not be started locally or in the browser on this device.";
+      state.engine.detailText = browserError instanceof Error
+        ? browserError.message
+        : String(browserError);
+    }
   }
 
   setEngineIdleState();
@@ -1495,10 +1943,14 @@ async function selectOpening(openingId) {
     state.selectedBook = await loadBook(opening);
     state.statusMessage = currentPracticeMode() === "position"
       ? "Opening loaded for line reference. Realistic Drill still chooses a random opening from the full database."
+      : currentPracticeMode() === "exam"
+        ? "Opening loaded for reference. Blind Recall still chooses a random opening from the full database."
       : "Opening loaded. Start line play, then tap a highlighted piece and its target square.";
     setEngineIdleState(
       currentPracticeMode() === "position"
         ? "Start realistic drill to see Stockfish evaluate a random opening position."
+        : currentPracticeMode() === "exam"
+          ? "Start Blind Recall to see Stockfish evaluate a random opening position with no hints."
         : "Start practice to see Stockfish evaluate the line on the board.",
     );
   } catch (error) {
@@ -1519,7 +1971,7 @@ async function startPractice() {
   if (mode === "line" && !state.selectedBook) {
     return;
   }
-  if (mode === "position" && !state.openings.length) {
+  if ((mode === "position" || mode === "exam") && !state.openings.length) {
     return;
   }
 
@@ -1528,13 +1980,20 @@ async function startPractice() {
   state.feedbackTone = "neutral";
   state.statusMessage = mode === "position"
     ? "Loading a realistic drill from a random opening..."
-    : "Starting a practice line...";
+    : mode === "exam"
+      ? "Loading a blind recall from a random opening..."
+      : "Starting a practice line...";
   renderAll();
 
   try {
-    if (mode === "position") {
+    if (mode === "position" || mode === "exam") {
       const selection = await loadRandomDrillBook(userColor);
-      state.session = createPositionSession(selection.book, userColor, depth, selection.candidate);
+      state.session = mode === "position"
+        ? createPositionSession(selection.book, userColor, depth, selection.candidate)
+        : createExamSession(selection.book, userColor, depth, selection.candidate);
+      if (state.session.mode === "exam" && !state.session.completed) {
+        await refreshExamLegalMoves(state.session);
+      }
     } else {
       state.session = createLineSession(state.selectedBook, userColor, depth);
     }
@@ -1557,7 +2016,7 @@ async function resetPractice() {
     return;
   }
 
-  if (state.session.mode === "position") {
+  if (state.session.mode === "position" || state.session.mode === "exam") {
     await startPractice();
     return;
   }
@@ -1579,7 +2038,7 @@ async function resetPractice() {
   void requestEngineEvaluation();
 }
 
-function submitMove(move) {
+async function submitMove(move) {
   if (!state.session) {
     return;
   }
@@ -1594,6 +2053,14 @@ function submitMove(move) {
   state.statusMessage = state.session.message;
   state.engine.lastFen = null;
   state.selectedSquare = null;
+  if (state.session.mode === "exam" && !state.session.completed) {
+    try {
+      await refreshExamLegalMoves(state.session);
+    } catch (error) {
+      state.feedbackTone = "error";
+      state.statusMessage = error instanceof Error ? error.message : String(error);
+    }
+  }
   renderAll();
   void requestEngineEvaluation();
 }
@@ -1608,7 +2075,7 @@ function handleSquareClick(square) {
   const directMove = currentTargets.find((move) => move.to === square);
 
   if (state.selectedSquare && directMove) {
-    submitMove(directMove);
+    void submitMove(directMove);
     return;
   }
 
@@ -1682,6 +2149,12 @@ if (elements.positionTab) {
   });
 }
 
+if (elements.examTab) {
+  elements.examTab.addEventListener("click", () => {
+    setActiveMode("exam");
+  });
+}
+
 if (elements.lineSideSelect) {
   elements.lineSideSelect.addEventListener("change", (event) => {
     syncSideSelectors(event.target.value);
@@ -1691,6 +2164,13 @@ if (elements.lineSideSelect) {
 
 if (elements.drillSideSelect) {
   elements.drillSideSelect.addEventListener("change", (event) => {
+    syncSideSelectors(event.target.value);
+    renderAll();
+  });
+}
+
+if (elements.examSideSelect) {
+  elements.examSideSelect.addEventListener("change", (event) => {
     syncSideSelectors(event.target.value);
     renderAll();
   });

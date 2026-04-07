@@ -1,9 +1,12 @@
-const CACHE_NAME = "opening-trainer-v6";
+const CACHE_NAME = "opening-trainer-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./vendor/stockfish/stockfish-18-lite-single.js",
+  "./vendor/stockfish/stockfish-18-lite-single.wasm",
+  "./vendor/stockfish/COPYING.txt",
   "./manifest.webmanifest",
   "./data/library.json",
   "./data/database.json",
@@ -53,6 +56,8 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith(".js") ||
     url.pathname.endsWith(".json") ||
     url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".txt") ||
+    url.pathname.endsWith(".wasm") ||
     url.pathname.endsWith(".webmanifest");
 
   if (!isStaticAsset) {
