@@ -22,6 +22,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Detect opening data changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            opening_data:
+              - opening_trainer.py
+              - requirements.txt
+              - QueensPawn/**/*.zip
+              - KingsPawn/**/*.zip
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -38,17 +49,27 @@ jobs:
             opening-data-${{ runner.os }}-
 
       - name: Install dependencies
-        if: steps.data-cache.outputs.cache-hit != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Decide whether opening data must be rebuilt
+        id: rebuild
+        run: |
+          if [ "${{ steps.changes.outputs.opening_data }}" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif [ -f static/data/database.json ]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build opening database
-        if: steps.data-cache.outputs.cache-hit != 'true'
+        if: steps.rebuild.outputs.should_build == 'true'
         run: python opening_trainer.py build
 
       - name: Save opening data cache
-        if: always() && steps.data-cache.outputs.cache-hit != 'true'
+        if: always() && steps.rebuild.outputs.should_build == 'true'
         uses: actions/cache/save@v4
         with:
           path: static/data

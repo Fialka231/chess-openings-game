@@ -7,6 +7,9 @@ This project is a lightweight phone-friendly web app for practicing Queen's Pawn
 - The opening files are now prebuilt into a static JSON database, so the app does not need to re-parse PGNs during play.
 - The browser runs the practice session directly from the stored opening tree.
 - The UI is designed for a fixed square board with built-in SVG chess pieces and installable PWA-style play on phones.
+- Position Drill and Line Play now live in separate tabs, and drills reset the same position after a wrong move.
+- The local Python server can expose live Stockfish evaluations while you practice.
+- The deploy workflow now reuses cached opening data and only rebuilds it when the source ZIPs or build code actually change.
 
 ## Build the opening library
 
@@ -31,6 +34,14 @@ Then open:
 
 - `http://127.0.0.1:8000` on your computer
 - `http://<your-computer-ip>:8000` on your phone if both devices are on the same Wi-Fi
+
+If you have a compiled Stockfish binary, you can enable live evaluation in the practice UI:
+
+```bash
+./.venv/bin/python opening_trainer.py serve --engine /path/to/stockfish
+```
+
+You can also set `OPENING_TRAINER_ENGINE=/path/to/stockfish`. On this machine, the raw `Stockfish-master.zip` file is source code only, so it must be compiled into an executable before the live evaluation card can work.
 
 ## Deploy as a web app
 
@@ -62,10 +73,12 @@ After you push the repository to GitHub:
 
 The workflow installs Python dependencies, rebuilds the opening database, and publishes the `static/` folder as a website.
 
+Once a successful build has seeded the opening-data cache, later UI-only pushes reuse the cached `static/data/` bundle instead of rebuilding every opening book from scratch.
+
 ## Push-ready repo layout
 
 The repository is prepared to push with:
 
 - `QueensPawn/` and `KingsPawn/` included as the source opening library
 - `static/data/` excluded because it is generated during build/deploy
-- `Stockfish-master.zip` excluded because the current web app does not use it
+- `Stockfish-master.zip` and the local `.engine/` folder excluded because they are only for optional local Stockfish setup

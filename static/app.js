@@ -1,4 +1,6 @@
 const DATABASE_URLS = ["./data/database.json", "./data/library.json"];
+const ENGINE_STATUS_URL = "./api/engine/status";
+const ENGINE_EVALUATE_URL = "./api/evaluate";
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const PIECE_ART = {
   p: `
@@ -58,6 +60,18 @@ const state = {
   openings: [],
   databaseMeta: null,
   bookCache: new Map(),
+  engine: {
+    available: null,
+    loading: false,
+    message: "Checking whether live Stockfish analysis is available...",
+    scoreText: "Waiting",
+    scoreTone: "neutral",
+    detailText: "Start a line or drill to see an evaluation of the current position.",
+    bestLineText:
+      "Live engine analysis is available when the app is served locally with a Stockfish executable.",
+    lastFen: null,
+    requestId: 0,
+  },
   activeMode: "line",
   selectedOpeningId: null,
   selectedBook: null,
@@ -102,6 +116,10 @@ const elements = {
   databaseSummary: document.getElementById("database-summary"),
   databaseIndexLink: document.getElementById("database-index-link"),
   selectedBookLink: document.getElementById("selected-book-link"),
+  engineStatus: document.getElementById("engine-status"),
+  engineScore: document.getElementById("engine-score"),
+  engineDetail: document.getElementById("engine-detail"),
+  engineBest: document.getElementById("engine-best"),
 };
 
 function currentPracticeMode() {
@@ -243,6 +261,64 @@ function createInitialBoard() {
     enPassant: null,
     lastMove: null,
   };
+}
+
+function boardPlacement(board) {
+  const ranks = [];
+  for (let rank = 8; rank >= 1; rank -= 1) {
+    let emptyCount = 0;
+    let segment = "";
+    for (const file of FILES) {
+      const piece = board.pieces[`${file}${rank}`];
+      if (piece) {
+        if (emptyCount) {
+          segment += String(emptyCount);
+          emptyCount = 0;
+        }
+        segment += piece;
+      } else {
+        emptyCount += 1;
+      }
+    }
+    if (emptyCount) {
+      segment += String(emptyCount);
+    }
+    ranks.push(segment);
+  }
+  return ranks.join("/");
+}
+
+function castlingRights(board) {
+  let rights = "";
+  if (board.castling.whiteKing) {
+    rights += "K";
+  }
+  if (board.castling.whiteQueen) {
+    rights += "Q";
+  }
+  if (board.castling.blackKing) {
+    rights += "k";
+  }
+  if (board.castling.blackQueen) {
+    rights += "q";
+  }
+  return rights || "-";
+}
+
+function boardToFen(board, ply = 0) {
+  const activeColor = board.turn === "white" ? "w" : "b";
+  const fullmoveNumber = Math.max(1, Math.floor((ply || 0) / 2) + 1);
+  return `${boardPlacement(board)} ${activeColor} ${castlingRights(board)} ${board.enPassant || "-"} 0 ${fullmoveNumber}`;
+}
+
+function currentSessionFen() {
+  if (!state.session) {
+    return null;
+  }
+  return boardToFen(
+    state.session.board,
+    state.session.currentNode?.ply || state.session.history.length || 0,
+  );
 }
 
 function expandNode(node, ply = 0) {
@@ -711,6 +787,99 @@ function playMove(session, move) {
   return { ok: true, session };
 }
 
+function setEngineIdleState(
+  detailText = "Start a line or drill to see an evaluation of the current position.",
+) {
+  state.engine.loading = false;
+  state.engine.lastFen = null;
+  state.engine.scoreText = state.engine.available === true
+    ? "Ready"
+    : state.engine.available === null
+      ? "Checking"
+      : "Off";
+  state.engine.scoreTone = "neutral";
+  state.engine.detailText = detailText;
+  state.engine.bestLineText = state.engine.available === true
+    ? "Stockfish will evaluate the current board as soon as practice starts."
+    : state.engine.message;
+}
+
+function renderEngineCard() {
+  elements.engineStatus.textContent = state.engine.message;
+  elements.engineScore.className = `engine-score ${state.engine.scoreTone}`;
+  elements.engineScore.textContent = state.engine.scoreText;
+  elements.engineDetail.textContent = state.engine.detailText;
+  elements.engineBest.textContent = state.engine.bestLineText;
+}
+
+async function requestEngineEvaluation() {
+  if (state.engine.available !== true || !state.session) {
+    return;
+  }
+
+  const fen = currentSessionFen();
+  if (!fen || state.engine.lastFen === fen) {
+    return;
+  }
+
+  const requestId = state.engine.requestId + 1;
+  state.engine.requestId = requestId;
+  state.engine.loading = true;
+  state.engine.scoreText = "...";
+  state.engine.scoreTone = "neutral";
+  state.engine.detailText = "Stockfish is evaluating the current position from White's perspective.";
+  state.engine.bestLineText = "Working on the best line...";
+  renderEngineCard();
+
+  try {
+    const payload = await requestJson(ENGINE_EVALUATE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ fen }),
+    });
+
+    if (requestId !== state.engine.requestId || currentSessionFen() !== fen) {
+      return;
+    }
+
+    state.engine.loading = false;
+    state.engine.available = Boolean(payload.available);
+    state.engine.lastFen = fen;
+    state.engine.message = payload.path
+      ? `Stockfish depth ${payload.depth} • ${payload.timeMs} ms budget`
+      : "Stockfish evaluation is ready.";
+    state.engine.scoreText = payload.score?.text || "n/a";
+    state.engine.scoreTone = payload.score?.text?.startsWith("-")
+      ? "black-edge"
+      : payload.score?.text?.startsWith("+") && payload.score?.text !== "+0.00"
+        ? "white-edge"
+        : "neutral";
+    state.engine.detailText = payload.score?.detail || "Stockfish returned an evaluation.";
+    state.engine.bestLineText = payload.bestMove
+      ? `Best move: ${payload.bestMove}${payload.pv?.length ? ` • PV ${payload.pv.join(" ")}` : ""}`
+      : "No principal variation was returned for this position.";
+  } catch (error) {
+    if (requestId !== state.engine.requestId) {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    state.engine.available = false;
+    state.engine.loading = false;
+    state.engine.lastFen = null;
+    state.engine.message =
+      "Live engine evaluation is unavailable here. GitHub Pages stays static, so Stockfish runs only through the local Python server.";
+    state.engine.scoreText = "Off";
+    state.engine.scoreTone = "neutral";
+    state.engine.detailText = message;
+    state.engine.bestLineText =
+      "Serve the app locally with a compiled Stockfish executable to see evaluations while you practice.";
+  }
+
+  renderEngineCard();
+}
+
 function pruneNode(node, maxPly) {
   if (node.ply && node.ply > maxPly) {
     return null;
@@ -919,6 +1088,11 @@ function setActiveMode(mode) {
       : "Select an opening on the right, then start a practice session.";
   }
 
+  setEngineIdleState(
+    mode === "position"
+      ? "Start a position drill to evaluate a random mid-line position."
+      : "Start line play to evaluate the current opening position.",
+  );
   renderAll();
 }
 
@@ -1153,6 +1327,7 @@ function updateButtons() {
 function renderAll() {
   renderBoard();
   renderFeedback();
+  renderEngineCard();
   renderExpectedMoves();
   renderHistory();
   renderSessionHeader();
@@ -1165,8 +1340,8 @@ function renderAll() {
   updateButtons();
 }
 
-async function requestJson(url) {
-  const response = await fetch(url);
+async function requestJson(url, options = undefined) {
+  const response = await fetch(url, options);
   const text = await response.text();
   let payload = {};
   try {
@@ -1190,6 +1365,24 @@ async function requestJsonWithFallback(urls) {
     }
   }
   throw lastError || new Error("The opening database could not be loaded.");
+}
+
+async function loadEngineStatus() {
+  try {
+    const payload = await requestJson(ENGINE_STATUS_URL);
+    state.engine.available = Boolean(payload.available);
+    state.engine.message = payload.message || "Stockfish engine status is ready.";
+  } catch (_error) {
+    state.engine.available = false;
+    state.engine.message =
+      "No local Stockfish service was detected. GitHub Pages deploys stay static, so live evaluation only appears when the app is served locally.";
+  }
+
+  setEngineIdleState();
+  renderEngineCard();
+  if (state.session && state.engine.available === true) {
+    void requestEngineEvaluation();
+  }
 }
 
 async function loadDatabase() {
@@ -1248,9 +1441,15 @@ async function selectOpening(openingId) {
     state.statusMessage = currentPracticeMode() === "position"
       ? "Opening loaded. Start a position drill to jump into a random book position."
       : "Opening loaded. Start line play, then tap a highlighted piece and its target square.";
+    setEngineIdleState(
+      currentPracticeMode() === "position"
+        ? "Start a position drill to see Stockfish evaluate a random book position."
+        : "Start practice to see Stockfish evaluate the line on the board.",
+    );
   } catch (error) {
     state.feedbackTone = "error";
     state.statusMessage = error.message;
+    setEngineIdleState("Load an opening successfully before Stockfish can evaluate a position.");
   } finally {
     state.loadingBook = false;
     renderAll();
@@ -1285,6 +1484,9 @@ async function startPractice() {
   } finally {
     state.startingSession = false;
     renderAll();
+    if (state.session) {
+      void requestEngineEvaluation();
+    }
   }
 }
 
@@ -1300,9 +1502,11 @@ function resetPractice() {
     currentLineDepth(),
     state.session.mode,
   );
+  state.engine.lastFen = null;
   state.feedbackTone = state.session.completed ? "complete" : "neutral";
   state.statusMessage = state.session.message;
   renderAll();
+  void requestEngineEvaluation();
 }
 
 function submitMove(move) {
@@ -1318,8 +1522,10 @@ function submitMove(move) {
       ? "success"
       : "error";
   state.statusMessage = state.session.message;
+  state.engine.lastFen = null;
   state.selectedSquare = null;
   renderAll();
+  void requestEngineEvaluation();
 }
 
 function handleSquareClick(square) {
@@ -1425,5 +1631,6 @@ elements.resetBtn.addEventListener("click", () => {
 });
 
 void setupOfflineSupport();
+void loadEngineStatus();
 void loadDatabase();
 renderAll();

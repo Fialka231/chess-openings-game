@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
+import os
 import re
+import shutil
 import socket
+import threading
 import zlib
 import zipfile
 from dataclasses import dataclass, field
@@ -13,14 +17,20 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from itertools import chain
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import chess
+import chess.engine
 import chess.pgn
 
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 MAX_BOOK_PLY = 20
+ENGINE_DEFAULT_DEPTH = 12
+ENGINE_DEFAULT_TIME_MS = 180
+ENGINE_CACHE_LIMIT = 256
+ENGINE_ENV_VAR = "OPENING_TRAINER_ENGINE"
 PROJECT_ROOT = Path(__file__).resolve().parent
 STATIC_ROOT = PROJECT_ROOT / "static"
 DATA_ROOT = STATIC_ROOT / "data"
@@ -331,6 +341,39 @@ class OpeningTrainerState:
         root = output_root or self.cache_root
         return root / "database.json"
 
+    def inputs_signature(self) -> str:
+        digest = hashlib.sha256()
+        static_inputs = (
+            self.project_root / "opening_trainer.py",
+            self.project_root / "requirements.txt",
+        )
+        for path in static_inputs:
+            digest.update(path.name.encode("utf-8"))
+            if path.exists():
+                digest.update(hashlib.sha256(path.read_bytes()).digest())
+        for source in sorted(self.sources.values(), key=lambda item: item.opening_id):
+            digest.update(source.opening_id.encode("utf-8"))
+            digest.update(self._source_signature(source).encode("utf-8"))
+        return digest.hexdigest()
+
+    def load_existing_manifest(self, output_root: Path | None = None) -> dict[str, Any] | None:
+        path = self._database_manifest_path(output_root)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+
+    def static_library_is_current(self, output_root: Path | None = None) -> bool:
+        manifest = self.load_existing_manifest(output_root)
+        return bool(
+            manifest
+            and manifest.get("formatVersion") == 2
+            and manifest.get("inputsSignature") == self.inputs_signature()
+            and len(manifest.get("openings", [])) == len(self.sources)
+        )
+
     def list_openings(self) -> list[dict[str, Any]]:
         openings = [self._source_summary(source) for source in self.sources.values()]
         openings.sort(key=lambda item: (item["category"].lower(), item["name"].lower()))
@@ -524,6 +567,15 @@ class OpeningTrainerState:
         verbose: bool = False,
         write_icons: bool = True,
     ) -> dict[str, Any]:
+        if not force and not opening_ids and self.static_library_is_current(output_root):
+            if write_icons and output_root in {None, self.cache_root}:
+                ensure_icon_assets()
+            manifest = self.load_existing_manifest(output_root)
+            if manifest is not None:
+                if verbose:
+                    print("Opening database is already up to date. Reusing cached static data.")
+                return manifest
+
         selected_sources = (
             [self.get_source(opening_id) for opening_id in opening_ids]
             if opening_ids
@@ -547,6 +599,7 @@ class OpeningTrainerState:
             "builtAt": utc_timestamp(),
             "maxBookPly": MAX_BOOK_PLY,
             "startFen": chess.STARTING_FEN,
+            "inputsSignature": self.inputs_signature(),
             "openings": manifest_openings,
         }
         manifest_path = self._manifest_path(output_root)
@@ -557,18 +610,286 @@ class OpeningTrainerState:
         return manifest
 
 
+def discover_stockfish_binary(project_root: Path, explicit_path: str | None = None) -> Path | None:
+    candidates: list[Path] = []
+    if explicit_path:
+        candidates.append(Path(explicit_path).expanduser())
+
+    env_path = os.getenv(ENGINE_ENV_VAR)
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    discovered = shutil.which("stockfish")
+    if discovered:
+        candidates.append(Path(discovered))
+
+    candidates.extend(
+        [
+            project_root / ".engine" / "stockfish",
+            project_root / ".engine" / "stockfish.exe",
+            project_root / "Stockfish-master" / "src" / "stockfish",
+            project_root / "Stockfish-master" / "src" / "stockfish.exe",
+            Path("/opt/homebrew/bin/stockfish"),
+            Path("/usr/local/bin/stockfish"),
+        ]
+    )
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = candidate.expanduser()
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def score_detail_text(centipawns: int) -> str:
+    if abs(centipawns) < 20:
+        return "Stockfish sees the position as roughly equal."
+    if abs(centipawns) < 80:
+        return "Stockfish sees a small edge."
+    if abs(centipawns) < 180:
+        return "Stockfish sees a clear edge."
+    if abs(centipawns) < 350:
+        return "Stockfish sees a strong advantage."
+    return "Stockfish sees a very large advantage."
+
+
+def format_engine_score(score: chess.engine.PovScore) -> dict[str, Any]:
+    white_score = score.white()
+    if white_score.is_mate():
+        mate = white_score.mate() or 0
+        winner = "White" if mate > 0 else "Black"
+        distance = abs(mate)
+        signed_text = f"{'+' if mate > 0 else '-'}M{distance}"
+        return {
+            "kind": "mate",
+            "mate": mate,
+            "text": signed_text,
+            "detail": f"{winner} can force mate in {distance}.",
+        }
+
+    centipawns = white_score.score() or 0
+    leader = "White" if centipawns > 0 else "Black" if centipawns < 0 else "Neither side"
+    detail = (
+        f"{leader} is better. {score_detail_text(centipawns)}"
+        if centipawns
+        else score_detail_text(centipawns)
+    )
+    return {
+        "kind": "cp",
+        "centipawns": centipawns,
+        "text": f"{centipawns / 100:+.2f}",
+        "detail": detail,
+    }
+
+
+class StockfishService:
+    def __init__(
+        self,
+        project_root: Path,
+        engine_path: str | None = None,
+        depth: int = ENGINE_DEFAULT_DEPTH,
+        time_ms: int = ENGINE_DEFAULT_TIME_MS,
+    ) -> None:
+        self.project_root = project_root
+        self.engine_path = discover_stockfish_binary(project_root, engine_path)
+        self.depth = depth
+        self.time_ms = time_ms
+        self._engine: chess.engine.SimpleEngine | None = None
+        self._lock = threading.Lock()
+        self._cache: dict[tuple[str, int, int], dict[str, Any]] = {}
+
+    def status_payload(self) -> dict[str, Any]:
+        archive_exists = (self.project_root / "Stockfish-master.zip").exists()
+        if not self.engine_path:
+            if archive_exists:
+                message = (
+                    "Stockfish source code is bundled here, but it still needs to be compiled into "
+                    "a runnable engine executable before live evaluation can start."
+                )
+            else:
+                message = (
+                    "No Stockfish executable was found. Start the server with --engine /path/to/stockfish "
+                    f"or set {ENGINE_ENV_VAR}."
+                )
+            return {
+                "available": False,
+                "message": message,
+                "path": None,
+                "depth": self.depth,
+                "timeMs": self.time_ms,
+            }
+
+        return {
+            "available": True,
+            "message": f"Using Stockfish at {self.engine_path}.",
+            "path": str(self.engine_path),
+            "depth": self.depth,
+            "timeMs": self.time_ms,
+        }
+
+    def _ensure_engine(self) -> chess.engine.SimpleEngine:
+        if not self.engine_path:
+            raise FileNotFoundError("No Stockfish executable is configured.")
+        if self._engine is None:
+            self._engine = chess.engine.SimpleEngine.popen_uci(str(self.engine_path))
+            try:
+                self._engine.configure({"Threads": 1, "Hash": 16})
+            except chess.engine.EngineError:
+                pass
+        return self._engine
+
+    def evaluate_fen(self, fen: str) -> dict[str, Any]:
+        cache_key = (fen, self.depth, self.time_ms)
+        with self._lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._cache.pop(cache_key)
+                self._cache[cache_key] = cached
+                return cached
+
+            board = chess.Board(fen)
+            engine = self._ensure_engine()
+            info = engine.analyse(
+                board,
+                chess.engine.Limit(depth=self.depth, time=max(self.time_ms / 1000, 0.05)),
+            )
+            pv = info.get("pv") or []
+            best_move = board.san(pv[0]) if pv else None
+            pv_san: list[str] = []
+            preview_board = board.copy()
+            for move in pv[:4]:
+                pv_san.append(preview_board.san(move))
+                preview_board.push(move)
+
+            payload = {
+                "available": True,
+                "path": str(self.engine_path) if self.engine_path else None,
+                "depth": self.depth,
+                "timeMs": self.time_ms,
+                "fen": fen,
+                "score": format_engine_score(info["score"]),
+                "bestMove": best_move,
+                "pv": pv_san,
+            }
+            self._cache[cache_key] = payload
+            if len(self._cache) > ENGINE_CACHE_LIMIT:
+                self._cache.pop(next(iter(self._cache)))
+            return payload
+
+    def close(self) -> None:
+        with self._lock:
+            if self._engine is not None:
+                self._engine.quit()
+                self._engine = None
+
+
+class OpeningTrainerServer(ThreadingHTTPServer):
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler_class: type[SimpleHTTPRequestHandler],
+        engine_service: StockfishService | None,
+    ) -> None:
+        super().__init__(server_address, request_handler_class)
+        self.engine_service = engine_service
+
+
 class StaticAppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(STATIC_ROOT), **kwargs)
 
+    def _write_json(self, payload: dict[str, Any], status_code: int = 200) -> None:
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _engine_service(self) -> StockfishService | None:
+        return getattr(self.server, "engine_service", None)
+
     def do_GET(self) -> None:
-        if self.path in {"", "/"}:
+        parsed = urlparse(self.path)
+        if parsed.path in {"", "/"}:
             self.path = "/index.html"
+            return super().do_GET()
+        if parsed.path == "/api/engine/status":
+            engine_service = self._engine_service()
+            payload = (
+                engine_service.status_payload()
+                if engine_service is not None
+                else {"available": False, "message": "No engine service is configured."}
+            )
+            return self._write_json(payload)
+        self.path = parsed.path
         return super().do_GET()
 
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/evaluate":
+            self.send_error(404, "Unknown API route.")
+            return
 
-def serve_static_app(host: str, port: int) -> None:
-    server = ThreadingHTTPServer((host, port), StaticAppHandler)
+        engine_service = self._engine_service()
+        if engine_service is None:
+            self._write_json(
+                {"available": False, "message": "No engine service is configured."},
+                status_code=503,
+            )
+            return
+
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._write_json({"error": "Invalid Content-Length header."}, status_code=400)
+            return
+
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            self._write_json({"error": "Request body must be valid JSON."}, status_code=400)
+            return
+
+        fen = payload.get("fen")
+        if not isinstance(fen, str) or not fen.strip():
+            self._write_json({"error": "A FEN string is required."}, status_code=400)
+            return
+
+        try:
+            evaluation = engine_service.evaluate_fen(fen)
+        except FileNotFoundError as error:
+            self._write_json(
+                {"available": False, "message": str(error)},
+                status_code=503,
+            )
+            return
+        except ValueError as error:
+            self._write_json({"error": str(error)}, status_code=400)
+            return
+        except chess.engine.EngineError as error:
+            self._write_json(
+                {"available": False, "message": f"Stockfish failed to evaluate this position: {error}"},
+                status_code=503,
+            )
+            return
+
+        self._write_json(evaluation)
+
+
+def serve_static_app(host: str, port: int, engine_service: StockfishService | None = None) -> None:
+    server = OpeningTrainerServer((host, port), StaticAppHandler, engine_service)
+    if engine_service is not None:
+        engine_status = engine_service.status_payload()
+        print(
+            "Stockfish evaluation: "
+            f"{engine_status['message']}"
+        )
     print(f"Opening trainer running on http://127.0.0.1:{port}")
     print(f"Phone URL on the same Wi-Fi: http://{local_ip(host)}:{port}")
     print("Press Ctrl+C to stop.")
@@ -578,6 +899,8 @@ def serve_static_app(host: str, port: int) -> None:
         print("\nStopping server...")
     finally:
         server.server_close()
+        if engine_service is not None:
+            engine_service.close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -591,6 +914,22 @@ def parse_args() -> argparse.Namespace:
     serve_parser.add_argument("--host", default=DEFAULT_HOST, help="Host to bind to.")
     serve_parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to bind to.")
     serve_parser.add_argument("--force", action="store_true", help="Rebuild every opening book before serving.")
+    serve_parser.add_argument(
+        "--engine",
+        help="Optional path to a compiled Stockfish executable for live evaluation.",
+    )
+    serve_parser.add_argument(
+        "--engine-depth",
+        type=int,
+        default=ENGINE_DEFAULT_DEPTH,
+        help="Search depth for Stockfish evaluations.",
+    )
+    serve_parser.add_argument(
+        "--engine-time-ms",
+        type=int,
+        default=ENGINE_DEFAULT_TIME_MS,
+        help="Time budget per Stockfish evaluation in milliseconds.",
+    )
 
     parser.set_defaults(command="serve")
     return parser.parse_args()
@@ -609,7 +948,13 @@ def main() -> None:
     print("Preparing static opening library...")
     manifest = state.build_static_library(force=args.force, verbose=True)
     print(f"Ready with {len(manifest['openings'])} opening books.")
-    serve_static_app(args.host, args.port)
+    engine_service = StockfishService(
+        PROJECT_ROOT,
+        engine_path=args.engine,
+        depth=args.engine_depth,
+        time_ms=args.engine_time_ms,
+    )
+    serve_static_app(args.host, args.port, engine_service=engine_service)
 
 
 if __name__ == "__main__":

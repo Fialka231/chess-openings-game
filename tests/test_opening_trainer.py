@@ -2,8 +2,16 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from opening_trainer import OpeningTrainerState, PROJECT_ROOT
+import chess
+
+from opening_trainer import (
+    PROJECT_ROOT,
+    OpeningTrainerState,
+    discover_stockfish_binary,
+    format_engine_score,
+)
 
 
 class OpeningTrainerTests(unittest.TestCase):
@@ -54,6 +62,7 @@ class OpeningTrainerTests(unittest.TestCase):
             self.assertEqual(manifest_ids, {self.qp_id, self.kp_id})
             self.assertEqual(database_ids, {self.qp_id, self.kp_id})
             self.assertEqual(database_payload["formatVersion"], 2)
+            self.assertTrue(database_payload["inputsSignature"])
 
             book_payload = json.loads(
                 (output_root / "books" / f"{self.qp_id}.json").read_text(encoding="utf-8")
@@ -75,6 +84,28 @@ class OpeningTrainerTests(unittest.TestCase):
             reloaded = OpeningTrainerState(PROJECT_ROOT, cache_root=output_root)
             book = reloaded.get_book(self.qp_id)
             self.assertEqual(book.root.sorted_children()[0].san, "d4")
+
+    def test_engine_score_formatting_handles_centipawns_and_mate(self) -> None:
+        cp_payload = format_engine_score(chess.engine.PovScore(chess.engine.Cp(34), chess.WHITE))
+        mate_payload = format_engine_score(chess.engine.PovScore(chess.engine.Mate(-3), chess.WHITE))
+
+        self.assertEqual(cp_payload["kind"], "cp")
+        self.assertEqual(cp_payload["text"], "+0.34")
+        self.assertEqual(mate_payload["kind"], "mate")
+        self.assertEqual(mate_payload["text"], "-M3")
+
+    def test_stockfish_discovery_prefers_explicit_or_env_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine_path = Path(temp_dir) / "stockfish"
+            engine_path.write_text("engine", encoding="utf-8")
+            engine_path.chmod(0o755)
+
+            discovered = discover_stockfish_binary(PROJECT_ROOT, str(engine_path))
+            self.assertEqual(discovered, engine_path)
+
+            with mock.patch.dict("os.environ", {"OPENING_TRAINER_ENGINE": str(engine_path)}):
+                discovered_from_env = discover_stockfish_binary(PROJECT_ROOT)
+            self.assertEqual(discovered_from_env, engine_path)
 
 
 if __name__ == "__main__":

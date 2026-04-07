@@ -12,3 +12,5 @@ static/data/
 
 # Not used by the web app or deploy workflow.
 Stockfish-master.zip
+Stockfish-master/
+.engine/

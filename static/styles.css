@@ -366,6 +366,40 @@ select {
   border: 1px solid rgba(93, 106, 91, 0.12);
 }
 
+.engine-card {
+  display: grid;
+  gap: 10px;
+}
+
+.engine-score {
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1;
+  color: var(--olive);
+}
+
+.engine-score.white-edge {
+  color: var(--success);
+}
+
+.engine-score.black-edge {
+  color: var(--error);
+}
+
+.engine-score.neutral {
+  color: var(--olive);
+}
+
+.engine-detail {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.engine-best {
+  min-height: 22px;
+  line-height: 1.45;
+}
+
 .install-card {
   margin-bottom: 10px;
 }
