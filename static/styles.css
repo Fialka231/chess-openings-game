@@ -126,6 +126,12 @@ select {
   justify-content: space-between;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .board-header h2,
 .variation-card h3,
 .openings-card h3 {

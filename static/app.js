@@ -59,7 +59,10 @@ const DRILL_FALLBACK_START_MIN_PLY = 2;
 const DRILL_FALLBACK_START_MAX_PLY = 8;
 const DRILL_PREFERRED_SPANS = [6, 4];
 const DRILL_FALLBACK_SPANS = [2];
-const CLIENT_ENGINE_DEPTH = 9;
+const BROWSER_ENGINE_MULTI_PV = 2;
+const BROWSER_ENGINE_DEPTH_LOW = 10;
+const BROWSER_ENGINE_DEPTH_MEDIUM = 11;
+const BROWSER_ENGINE_DEPTH_HIGH = 12;
 
 const state = {
   openings: [],
@@ -117,6 +120,7 @@ const elements = {
   drillSideSelect: document.getElementById("drill-side-select"),
   examSideSelect: document.getElementById("exam-side-select"),
   startBtn: document.getElementById("start-btn"),
+  undoBtn: document.getElementById("undo-btn"),
   resetBtn: document.getElementById("reset-btn"),
   turnPill: document.getElementById("turn-pill"),
   depthPill: document.getElementById("depth-pill"),
@@ -452,8 +456,23 @@ function ensureBrowserEngineReady() {
   return browserEnginePromise;
 }
 
+function browserEngineDepth() {
+  const cores = Math.max(1, Number(navigator.hardwareConcurrency) || 4);
+  if (cores >= 8) {
+    return BROWSER_ENGINE_DEPTH_HIGH;
+  }
+  if (cores >= 4) {
+    return BROWSER_ENGINE_DEPTH_MEDIUM;
+  }
+  return BROWSER_ENGINE_DEPTH_LOW;
+}
+
+function engineAlternativeMove(info) {
+  return info?.pv?.[0] || null;
+}
+
 function parseBrowserSearchInfo(lines) {
-  let bestInfo = null;
+  const suggestions = new Map();
   let bestMove = null;
 
   for (const line of lines) {
@@ -466,25 +485,34 @@ function parseBrowserSearchInfo(lines) {
     }
 
     const depthMatch = line.match(/\bdepth\s+(\d+)/);
+    const multiPvMatch = line.match(/\bmultipv\s+(\d+)/);
     const scoreMatch = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
     if (!scoreMatch) {
       continue;
     }
 
     const pvMatch = line.match(/\spv\s+(.+)$/);
+    const multiPv = multiPvMatch ? Number(multiPvMatch[1]) : 1;
     const nextInfo = {
+      multiPv,
       depth: depthMatch ? Number(depthMatch[1]) : 0,
       kind: scoreMatch[1],
       value: Number(scoreMatch[2]),
       pv: pvMatch ? pvMatch[1].trim().split(/\s+/).filter(Boolean) : [],
     };
 
-    if (!bestInfo || nextInfo.depth >= bestInfo.depth) {
-      bestInfo = nextInfo;
+    const existing = suggestions.get(multiPv);
+    if (!existing || nextInfo.depth >= existing.depth) {
+      suggestions.set(multiPv, nextInfo);
     }
   }
 
-  return { bestInfo, bestMove };
+  const ordered = [...suggestions.values()].sort((left, right) => left.multiPv - right.multiPv);
+  return {
+    bestInfo: ordered[0] || null,
+    bestMove: bestMove || engineAlternativeMove(ordered[0]),
+    suggestions: ordered,
+  };
 }
 
 function formatBrowserScore(kind, value) {
@@ -527,18 +555,28 @@ function parseBrowserLegalMoves(lines) {
 
 async function requestBrowserEvaluation(fen) {
   const engine = await ensureBrowserEngineReady();
+  const depth = browserEngineDepth();
   const lines = await engine.enqueue(
-    [`position fen ${fen}`, `go depth ${CLIENT_ENGINE_DEPTH}`],
+    [
+      `setoption name MultiPV value ${BROWSER_ENGINE_MULTI_PV}`,
+      `position fen ${fen}`,
+      `go depth ${depth}`,
+    ],
     (line) => line.startsWith("bestmove "),
   );
-  const { bestInfo, bestMove } = parseBrowserSearchInfo(lines);
+  const { bestInfo, bestMove, suggestions } = parseBrowserSearchInfo(lines);
   return {
     available: true,
     source: "browser",
-    depth: bestInfo?.depth || CLIENT_ENGINE_DEPTH,
+    depth: bestInfo?.depth || depth,
     score: bestInfo ? formatBrowserScore(bestInfo.kind, bestInfo.value) : null,
     bestMove,
     pv: bestInfo?.pv || [],
+    alternatives: suggestions.slice(1).map((info) => ({
+      move: engineAlternativeMove(info),
+      pv: info.pv || [],
+      score: formatBrowserScore(info.kind, info.value),
+    })),
   };
 }
 
@@ -825,6 +863,15 @@ function buildSession(book, userColor, depthLimit, mode) {
     completed: false,
     message: "",
     drill: null,
+    anchor: null,
+  };
+}
+
+function captureSessionAnchor(session) {
+  session.anchor = {
+    currentNode: session.currentNode,
+    board: cloneBoard(session.board),
+    history: copyHistoryEntries(session.history),
   };
 }
 
@@ -836,6 +883,55 @@ function applyStartingPath(session, path) {
 
 function copyHistoryEntries(history) {
   return history.map((entry) => ({ ...entry }));
+}
+
+function replayHistoryEntry(session, entry) {
+  const nextChild = (session.currentNode.children || []).find((child) => child.uci === entry.uci);
+  if (!nextChild) {
+    throw new Error(`Could not restore move ${entry.uci} while rebuilding the session.`);
+  }
+  applyChild(session, nextChild, entry.actor);
+}
+
+function canUndoSession(session) {
+  if (!session?.anchor) {
+    return false;
+  }
+  const anchorLength = session.anchor.history.length;
+  return session.history.some((entry, index) => index >= anchorLength && entry.actor === "you");
+}
+
+function undoBreakpointIndex(session) {
+  if (!canUndoSession(session)) {
+    return -1;
+  }
+  const anchorLength = session.anchor.history.length;
+  for (let index = session.history.length - 1; index >= anchorLength; index -= 1) {
+    if (session.history[index].actor === "you") {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function restoreSessionToHistoryPrefix(session, targetLength) {
+  if (!session.anchor) {
+    return;
+  }
+
+  const baseHistory = session.anchor.history;
+  const replayEntries = session.history.slice(baseHistory.length, targetLength);
+  session.currentNode = session.anchor.currentNode;
+  session.board = cloneBoard(session.anchor.board);
+  session.history = copyHistoryEntries(baseHistory);
+  session.completed = false;
+  session.legalMoves = [];
+
+  for (const entry of replayEntries) {
+    replayHistoryEntry(session, entry);
+  }
+
+  syncSessionDerived(session);
 }
 
 function userMoveGoalFromSpan(span) {
@@ -967,6 +1063,7 @@ function createLineSession(book, userColor, depthLimit) {
   } else {
     session.message = "Opening loaded. Play one of the highlighted book moves.";
   }
+  captureSessionAnchor(session);
   return session;
 }
 
@@ -1002,6 +1099,7 @@ function createPositionSession(book, userColor, depthLimit, presetCandidate = nu
     goalMessage,
   };
   session.message = `${introPrefix}Realistic drill starts after ${startLabel}. ${goalMessage}`;
+  captureSessionAnchor(session);
   return session;
 }
 
@@ -1025,6 +1123,7 @@ function createExamSession(book, userColor, depthLimit, presetCandidate = null) 
       : `Blind recall starts from move 1 in ${book.name}. No hints are shown.`;
     fallback.legalMoves = [];
     syncSessionDerived(fallback);
+    captureSessionAnchor(fallback);
     return fallback;
   }
 
@@ -1053,6 +1152,7 @@ function createExamSession(book, userColor, depthLimit, presetCandidate = null) 
   session.message = `${introPrefix}Blind recall starts after ${startLabel}. ${goalMessage}`;
   session.legalMoves = [];
   syncSessionDerived(session);
+  captureSessionAnchor(session);
   return session;
 }
 
@@ -1174,6 +1274,22 @@ function setEngineIdleState(
     : state.engine.message;
 }
 
+function formatEngineBestLine(payload) {
+  if (!payload.bestMove) {
+    return "No principal variation was returned for this position.";
+  }
+
+  const lead = [`Best move: ${payload.bestMove}`];
+  const alternative = (payload.alternatives || []).find((item) => item.move);
+  if (alternative) {
+    lead.push(`Next choice: ${alternative.move}${alternative.score?.text ? ` (${alternative.score.text})` : ""}`);
+  }
+  if (payload.pv?.length) {
+    lead.push(`PV ${payload.pv.join(" ")}`);
+  }
+  return lead.join(" • ");
+}
+
 function renderEngineCard() {
   if (
     !elements.engineStatus ||
@@ -1252,7 +1368,7 @@ async function requestEngineEvaluation() {
         : "neutral";
     state.engine.detailText = payload.score?.detail || "Stockfish returned an evaluation.";
     state.engine.bestLineText = payload.bestMove
-      ? `Best move: ${payload.bestMove}${payload.pv?.length ? ` • PV ${payload.pv.join(" ")}` : ""}`
+      ? formatEngineBestLine(payload)
       : "No principal variation was returned for this position.";
   } catch (error) {
     if (requestId !== state.engine.requestId) {
@@ -1758,6 +1874,10 @@ function updateButtons() {
     ? state.openings.length > 0
     : Boolean(state.selectedOpeningId) && Boolean(state.selectedBook) && !state.loadingBook;
   elements.startBtn.disabled = !canStart || state.startingSession || state.loadingDatabase;
+  if (elements.undoBtn) {
+    elements.undoBtn.disabled =
+      !state.session || !canUndoSession(state.session) || state.startingSession || state.loadingBook;
+  }
   elements.resetBtn.disabled = !state.session || state.startingSession || state.loadingBook;
   elements.resetBtn.textContent = mode === "position"
     ? "New Drill"
@@ -2011,6 +2131,48 @@ async function startPractice() {
   }
 }
 
+async function undoPractice() {
+  if (!state.session) {
+    return;
+  }
+
+  const breakpoint = undoBreakpointIndex(state.session);
+  if (breakpoint < 0) {
+    state.feedbackTone = "neutral";
+    state.statusMessage = state.session.mode === "exam"
+      ? "You are already at the current Blind Recall starting position."
+      : state.session.mode === "position"
+        ? "You are already at the current drill starting position."
+        : "You are already at the current line starting position.";
+    renderAll();
+    return;
+  }
+
+  try {
+    restoreSessionToHistoryPrefix(state.session, breakpoint);
+    if (state.session.mode === "exam" && !state.session.completed) {
+      await refreshExamLegalMoves(state.session);
+    }
+    state.selectedSquare = null;
+    state.engine.lastFen = null;
+    state.feedbackTone = "neutral";
+    state.session.message = state.session.mode === "exam"
+      ? `Took back your last move. No hints are shown. ${remainingDrillGoalMessage(state.session)}`
+      : state.session.mode === "position"
+        ? `Took back your last move. ${remainingDrillGoalMessage(state.session)}`
+        : "Took back your last move. Play again from this position.";
+    state.statusMessage = state.session.message;
+  } catch (error) {
+    state.feedbackTone = "error";
+    state.statusMessage = error instanceof Error ? error.message : String(error);
+  }
+
+  renderAll();
+  if (state.session) {
+    void requestEngineEvaluation();
+  }
+}
+
 async function resetPractice() {
   if (!state.session) {
     return;
@@ -2185,6 +2347,12 @@ if (elements.lineDepthSelect) {
 elements.startBtn.addEventListener("click", () => {
   void startPractice();
 });
+
+if (elements.undoBtn) {
+  elements.undoBtn.addEventListener("click", () => {
+    void undoPractice();
+  });
+}
 
 elements.resetBtn.addEventListener("click", () => {
   void resetPractice();
