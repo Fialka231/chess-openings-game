@@ -14,3 +14,6 @@ static/data/
 Stockfish-master.zip
 Stockfish-master/
 .engine/
+
+# Optional local lesson shelf files. Keep copyrighted study material out of git.
+Lessons/

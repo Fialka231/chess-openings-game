@@ -1,4 +1,5 @@
 const DATABASE_URLS = ["./data/database.json", "./data/library.json"];
+const LESSONS_URLS = ["./api/lessons", "./data/lessons.json"];
 const ENGINE_STATUS_URL = "./api/engine/status";
 const ENGINE_EVALUATE_URL = "./api/evaluate";
 const BROWSER_STOCKFISH_SCRIPT = "./vendor/stockfish/stockfish-18-lite-single.js";
@@ -65,8 +66,10 @@ const BROWSER_ENGINE_DEPTH_MEDIUM = 11;
 const BROWSER_ENGINE_DEPTH_HIGH = 12;
 
 const state = {
+  activeView: "home",
   openings: [],
   databaseMeta: null,
+  lessons: [],
   bookCache: new Map(),
   engine: {
     available: null,
@@ -88,15 +91,35 @@ const state = {
   selectedSquare: null,
   search: "",
   categoryFilter: "all",
+  selectedLessonId: null,
+  lessonSearch: "",
+  lessonCategoryFilter: "all",
   feedbackTone: "neutral",
   statusMessage: "Select an opening on the right, then start a practice session.",
   loadingDatabase: false,
+  loadingLessons: false,
   loadingBook: false,
   startingSession: false,
   offlineStatus: "Offline support is loading.",
 };
 
 const elements = {
+  homeView: document.getElementById("home-view"),
+  practiceView: document.getElementById("practice-view"),
+  lessonsView: document.getElementById("lessons-view"),
+  homeNav: document.getElementById("home-nav"),
+  practiceNav: document.getElementById("practice-nav"),
+  lessonsNav: document.getElementById("lessons-nav"),
+  enterPractice: document.getElementById("enter-practice"),
+  enterLessons: document.getElementById("enter-lessons"),
+  backHomePractice: document.getElementById("back-home-practice"),
+  openLessonsFromPractice: document.getElementById("open-lessons-from-practice"),
+  backHomeLessons: document.getElementById("back-home-lessons"),
+  openPracticeFromLessons: document.getElementById("open-practice-from-lessons"),
+  homeOpeningCount: document.getElementById("home-opening-count"),
+  homeLessonCount: document.getElementById("home-lesson-count"),
+  homeLessonCategoryCount: document.getElementById("home-lesson-category-count"),
+  homeEngineNote: document.getElementById("home-engine-note"),
   board: document.getElementById("board"),
   feedback: document.getElementById("feedback"),
   history: document.getElementById("history"),
@@ -133,6 +156,19 @@ const elements = {
   engineScore: document.getElementById("engine-score"),
   engineDetail: document.getElementById("engine-detail"),
   engineBest: document.getElementById("engine-best"),
+  lessonSearchInput: document.getElementById("lesson-search-input"),
+  lessonCategoryFilters: document.getElementById("lesson-category-filters"),
+  lessonList: document.getElementById("lesson-list"),
+  lessonCount: document.getElementById("lesson-count"),
+  selectedLessonTitle: document.getElementById("selected-lesson-title"),
+  selectedLessonMeta: document.getElementById("selected-lesson-meta"),
+  selectedLessonSummary: document.getElementById("selected-lesson-summary"),
+  selectedLessonFocus: document.getElementById("selected-lesson-focus"),
+  selectedLessonFormat: document.getElementById("selected-lesson-format"),
+  selectedLessonTags: document.getElementById("selected-lesson-tags"),
+  selectedLessonStatus: document.getElementById("selected-lesson-status"),
+  lessonOpenLink: document.getElementById("lesson-open-link"),
+  lessonPracticeLink: document.getElementById("lesson-practice-link"),
 };
 
 let browserEnginePromise = null;
@@ -199,6 +235,21 @@ function currentOpeningSummary() {
     return state.selectedBook;
   }
   return state.openings.find((opening) => opening.id === state.selectedOpeningId) || null;
+}
+
+function currentLesson() {
+  return state.lessons.find((lesson) => lesson.id === state.selectedLessonId) || null;
+}
+
+function lessonCategories() {
+  return [...new Set(state.lessons.map((lesson) => lesson.category))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function setActiveView(view) {
+  state.activeView = view;
+  renderAll();
 }
 
 function parseFenBoard(placement) {
@@ -709,6 +760,21 @@ function formatStartingLine(path, maxPlies = 8) {
 }
 
 function syncSessionDerived(session) {
+  if (session.drill?.line?.length && (session.mode === "position" || session.mode === "exam")) {
+    const target = session.drill.line[session.drill.index] || null;
+    session.correctMoves = target ? [openingMove(target)] : [];
+    session.allowedMoves = session.mode === "exam"
+      ? (session.legalMoves || []).map(cloneMoveOption)
+      : session.correctMoves.map(cloneMoveOption);
+    session.expectedMoves = session.mode === "exam"
+      ? []
+      : target
+        ? [target.san]
+        : [];
+    session.completed = session.completed || !target;
+    return;
+  }
+
   const children = availableChildren(session.currentNode, session.depthLimit);
   session.correctMoves = children.map(openingMove);
   session.allowedMoves = session.mode === "exam"
@@ -828,6 +894,18 @@ function applyChild(session, child, actor) {
 function advanceTrainer(session) {
   const replies = [];
   while (!session.completed && session.board.turn !== session.userColor) {
+    if (session.drill?.line?.length && (session.mode === "position" || session.mode === "exam")) {
+      const planned = session.drill.line[session.drill.index];
+      if (!planned) {
+        session.completed = true;
+        break;
+      }
+      applyChild(session, planned, "trainer");
+      session.drill.index += 1;
+      replies.push(planned.san);
+      continue;
+    }
+
     const children = availableChildren(session.currentNode, session.depthLimit);
     if (!children.length) {
       session.completed = true;
@@ -926,9 +1004,18 @@ function restoreSessionToHistoryPrefix(session, targetLength) {
   session.history = copyHistoryEntries(baseHistory);
   session.completed = false;
   session.legalMoves = [];
+  if (session.drill) {
+    session.drill.index = 0;
+  }
 
   for (const entry of replayEntries) {
     replayHistoryEntry(session, entry);
+    if (session.drill?.line?.length) {
+      const planned = session.drill.line[session.drill.index];
+      if (planned?.uci === entry.uci) {
+        session.drill.index += 1;
+      }
+    }
   }
 
   syncSessionDerived(session);
@@ -944,8 +1031,7 @@ function drillGoalMessage(userColor, span) {
 }
 
 function remainingDrillGoalMessage(session) {
-  const remainingPlies = Math.max(0, session.depthLimit - session.currentNode.ply);
-  const remainingMoves = Math.max(1, Math.ceil(remainingPlies / 2));
+  const remainingMoves = Math.max(1, remainingDrillUserMoves(session));
   return `Find the next ${remainingMoves} correct ${pluralize(remainingMoves, "move")} for ${capitalize(session.userColor)}.`;
 }
 
@@ -1034,6 +1120,34 @@ function pickDrillCandidate(book, userColor) {
   };
 }
 
+function planDrillLine(startNode, span) {
+  const line = [];
+  let cursor = startNode;
+
+  while (line.length < span) {
+    const children = cursor.children || [];
+    if (!children.length) {
+      break;
+    }
+    const chosen = weightedChoice(children);
+    line.push(chosen);
+    cursor = chosen;
+  }
+
+  return line;
+}
+
+function remainingDrillUserMoves(session) {
+  if (session.drill?.line?.length) {
+    return session.drill.line
+      .slice(session.drill.index || 0)
+      .filter((node) => sideToMoveFromPly(node.ply) === session.userColor)
+      .length;
+  }
+  const remainingPlies = Math.max(0, session.depthLimit - session.currentNode.ply);
+  return Math.max(1, Math.ceil(remainingPlies / 2));
+}
+
 function resetPositionSession(session, prefix = "Wrong move.") {
   if (!session.drill) {
     return session;
@@ -1044,6 +1158,7 @@ function resetPositionSession(session, prefix = "Wrong move.") {
   session.history = copyHistoryEntries(session.drill.startHistory);
   session.depthLimit = session.drill.endPly;
   session.completed = false;
+  session.drill.index = 0;
   session.legalMoves = session.mode === "exam" && session.drill.startLegalMoves
     ? session.drill.startLegalMoves.map(cloneMoveOption)
     : [];
@@ -1067,21 +1182,73 @@ function createLineSession(book, userColor, depthLimit) {
   return session;
 }
 
+function createFallbackStrictDrillSession(book, userColor, depthLimit, mode) {
+  const session = buildSession(book, userColor, depthLimit, mode);
+  const trainerMoves = advanceTrainer(session);
+  const line = planDrillLine(
+    session.currentNode,
+    Math.max(1, depthLimit - session.currentNode.ply),
+  );
+
+  if (!line.length) {
+    session.completed = true;
+    session.message = "This drill position is already complete at the selected depth.";
+    captureSessionAnchor(session);
+    return session;
+  }
+
+  session.depthLimit = line[line.length - 1].ply;
+  session.drill = {
+    startNode: session.currentNode,
+    startBoard: cloneBoard(session.board),
+    startHistory: copyHistoryEntries(session.history),
+    startLabel: trainerMoves.length ? trainerMoves.join(" ") : "the starting position",
+    endPly: session.depthLimit,
+    goalMessage:
+      mode === "exam"
+        ? "No hints are shown. Play the correct continuation from move 1."
+        : drillGoalMessage(userColor, line.length),
+    startLegalMoves: [],
+    line,
+    index: 0,
+  };
+  if (mode === "exam") {
+    session.message = trainerMoves.length
+      ? `Blind recall starts from move 1 in ${book.name}. Trainer plays ${trainerMoves.join(" ")}. No hints are shown.`
+      : `Blind recall starts from move 1 in ${book.name}. No hints are shown.`;
+    session.legalMoves = [];
+  } else {
+    session.message = trainerMoves.length
+      ? `No deeper realistic drill position was available, so the drill starts from move 1 after ${trainerMoves.join(" ")}. ${drillGoalMessage(userColor, line.length)}`
+      : `No deeper realistic drill position was available, so the drill starts from move 1. ${drillGoalMessage(userColor, line.length)}`;
+  }
+  syncSessionDerived(session);
+  captureSessionAnchor(session);
+  return session;
+}
+
 function createPositionSession(book, userColor, depthLimit, presetCandidate = null) {
   const candidate = presetCandidate || pickDrillCandidate(book, userColor);
 
   if (!candidate) {
-    const fallback = createLineSession(book, userColor, depthLimit);
-    fallback.mode = "position";
-    fallback.message = `No deeper realistic drill position was available in this opening, so training started from move 1. ${fallback.message}`;
-    return fallback;
+    return createFallbackStrictDrillSession(book, userColor, depthLimit, "position");
   }
 
-  const session = buildSession(book, userColor, candidate.node.ply + candidate.span, "position");
+  const line = planDrillLine(candidate.node, candidate.span);
+  if (!line.length) {
+    return createFallbackStrictDrillSession(book, userColor, depthLimit, "position");
+  }
+
+  const session = buildSession(
+    book,
+    userColor,
+    line[line.length - 1].ply,
+    "position",
+  );
   applyStartingPath(session, candidate.path);
   syncSessionDerived(session);
 
-  if (session.completed || !session.allowedMoves.length) {
+  if (session.completed) {
     session.completed = true;
     session.message = "This drill position is already complete at the selected depth.";
     return session;
@@ -1089,7 +1256,7 @@ function createPositionSession(book, userColor, depthLimit, presetCandidate = nu
 
   const startLabel = formatStartingLine(candidate.path);
   const introPrefix = candidate.fallbackMessage ? `${candidate.fallbackMessage} ` : "";
-  const goalMessage = drillGoalMessage(userColor, candidate.span);
+  const goalMessage = drillGoalMessage(userColor, line.length);
   session.drill = {
     startNode: candidate.node,
     startBoard: cloneBoard(session.board),
@@ -1097,7 +1264,10 @@ function createPositionSession(book, userColor, depthLimit, presetCandidate = nu
     startLabel,
     endPly: session.depthLimit,
     goalMessage,
+    line,
+    index: 0,
   };
+  syncSessionDerived(session);
   session.message = `${introPrefix}Realistic drill starts after ${startLabel}. ${goalMessage}`;
   captureSessionAnchor(session);
   return session;
@@ -1107,31 +1277,19 @@ function createExamSession(book, userColor, depthLimit, presetCandidate = null) 
   const candidate = presetCandidate || pickDrillCandidate(book, userColor);
 
   if (!candidate) {
-    const fallback = buildSession(book, userColor, depthLimit, "exam");
-    const trainerMoves = advanceTrainer(fallback);
-    fallback.drill = {
-      startNode: fallback.currentNode,
-      startBoard: cloneBoard(fallback.board),
-      startHistory: copyHistoryEntries(fallback.history),
-      startLabel: trainerMoves.length ? trainerMoves.join(" ") : "the starting position",
-      endPly: fallback.depthLimit,
-      goalMessage: "No hints are shown. Play the correct continuation from move 1.",
-      startLegalMoves: [],
-    };
-    fallback.message = trainerMoves.length
-      ? `Blind recall starts from move 1 in ${book.name}. Trainer plays ${trainerMoves.join(" ")}. No hints are shown.`
-      : `Blind recall starts from move 1 in ${book.name}. No hints are shown.`;
-    fallback.legalMoves = [];
-    syncSessionDerived(fallback);
-    captureSessionAnchor(fallback);
-    return fallback;
+    return createFallbackStrictDrillSession(book, userColor, depthLimit, "exam");
   }
 
-  const session = buildSession(book, userColor, candidate.node.ply + candidate.span, "exam");
+  const line = planDrillLine(candidate.node, candidate.span);
+  if (!line.length) {
+    return createFallbackStrictDrillSession(book, userColor, depthLimit, "exam");
+  }
+
+  const session = buildSession(book, userColor, line[line.length - 1].ply, "exam");
   applyStartingPath(session, candidate.path);
   syncSessionDerived(session);
 
-  if (session.completed || !session.correctMoves.length) {
+  if (session.completed) {
     session.completed = true;
     session.message = "This blind recall position is already complete at the selected depth.";
     return session;
@@ -1139,7 +1297,7 @@ function createExamSession(book, userColor, depthLimit, presetCandidate = null) 
 
   const startLabel = formatStartingLine(candidate.path);
   const introPrefix = candidate.fallbackMessage ? `${candidate.fallbackMessage} ` : "";
-  const goalMessage = `No hints are shown. ${drillGoalMessage(userColor, candidate.span)}`;
+  const goalMessage = `No hints are shown. ${drillGoalMessage(userColor, line.length)}`;
   session.drill = {
     startNode: candidate.node,
     startBoard: cloneBoard(session.board),
@@ -1148,6 +1306,8 @@ function createExamSession(book, userColor, depthLimit, presetCandidate = null) 
     endPly: session.depthLimit,
     goalMessage,
     startLegalMoves: [],
+    line,
+    index: 0,
   };
   session.message = `${introPrefix}Blind recall starts after ${startLabel}. ${goalMessage}`;
   session.legalMoves = [];
@@ -1212,7 +1372,14 @@ function playMove(session, move) {
   }
 
   const children = availableChildren(session.currentNode, session.depthLimit);
-  const selected = children.find((child) => child.uci === moveUci(move));
+  const planned = session.drill?.line?.length && (session.mode === "position" || session.mode === "exam")
+    ? session.drill.line[session.drill.index] || null
+    : null;
+  const selected = planned
+    ? planned.uci === moveUci(move)
+      ? planned
+      : null
+    : children.find((child) => child.uci === moveUci(move));
   if (!selected) {
     if (session.mode === "position" && session.drill) {
       resetPositionSession(session);
@@ -1231,6 +1398,9 @@ function playMove(session, move) {
   }
 
   applyChild(session, selected, "you");
+  if (planned) {
+    session.drill.index += 1;
+  }
   const trainerMoves = advanceTrainer(session);
   if (session.completed) {
     session.message = session.mode === "position"
@@ -1593,6 +1763,52 @@ function renderOfflineStatus() {
   elements.offlineStatus.textContent = state.offlineStatus;
 }
 
+function renderViewState() {
+  if (elements.homeView) {
+    elements.homeView.hidden = state.activeView !== "home";
+  }
+  if (elements.practiceView) {
+    elements.practiceView.hidden = state.activeView !== "practice";
+  }
+  if (elements.lessonsView) {
+    elements.lessonsView.hidden = state.activeView !== "lessons";
+  }
+
+  const activeHome = state.activeView === "home";
+  const activePractice = state.activeView === "practice";
+  const activeLessons = state.activeView === "lessons";
+  if (elements.practiceNav) {
+    elements.practiceNav.classList[activePractice ? "add" : "remove"]("active");
+  }
+  if (elements.lessonsNav) {
+    elements.lessonsNav.classList[activeLessons ? "add" : "remove"]("active");
+  }
+  if (elements.homeNav) {
+    elements.homeNav.classList[activeHome ? "add" : "remove"]("active");
+  }
+}
+
+function renderHomeDashboard() {
+  if (elements.homeOpeningCount) {
+    elements.homeOpeningCount.textContent = state.loadingDatabase
+      ? "..."
+      : String(state.openings.length);
+  }
+  if (elements.homeLessonCount) {
+    elements.homeLessonCount.textContent = state.loadingLessons
+      ? "..."
+      : String(state.lessons.length);
+  }
+  if (elements.homeLessonCategoryCount) {
+    elements.homeLessonCategoryCount.textContent = state.loadingLessons
+      ? "..."
+      : String(lessonCategories().length || 0);
+  }
+  if (elements.homeEngineNote) {
+    elements.homeEngineNote.textContent = state.engine.message;
+  }
+}
+
 function renderPracticeModeTabs() {
   const mode = currentPracticeMode();
   if (
@@ -1717,6 +1933,163 @@ function filteredOpenings() {
       opening.relativePath.toLowerCase().includes(query);
     return matchesCategory && matchesQuery;
   });
+}
+
+function filteredLessons() {
+  const query = state.lessonSearch.trim().toLowerCase();
+  return state.lessons.filter((lesson) => {
+    const matchesCategory =
+      state.lessonCategoryFilter === "all" || lesson.category === state.lessonCategoryFilter;
+    const matchesQuery =
+      !query ||
+      lesson.title.toLowerCase().includes(query) ||
+      lesson.author.toLowerCase().includes(query) ||
+      lesson.summary.toLowerCase().includes(query) ||
+      lesson.tags.some((tag) => tag.toLowerCase().includes(query));
+    return matchesCategory && matchesQuery;
+  });
+}
+
+function renderLessonCategories() {
+  if (!elements.lessonCategoryFilters) {
+    return;
+  }
+  elements.lessonCategoryFilters.innerHTML = "";
+  const allCategories = ["all", ...lessonCategories()];
+  for (const category of allCategories) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "filter-pill";
+    if (state.lessonCategoryFilter === category) {
+      button.classList.add("active");
+    }
+    button.textContent = category === "all" ? "All Lessons" : category;
+    button.addEventListener("click", () => {
+      state.lessonCategoryFilter = category;
+      const visible = filteredLessons();
+      if (!visible.some((lesson) => lesson.id === state.selectedLessonId)) {
+        state.selectedLessonId = visible[0]?.id || null;
+      }
+      renderAll();
+    });
+    elements.lessonCategoryFilters.appendChild(button);
+  }
+}
+
+function renderLessonsList() {
+  if (!elements.lessonList || !elements.lessonCount) {
+    return;
+  }
+  const filtered = filteredLessons();
+  elements.lessonList.innerHTML = "";
+  elements.lessonCount.textContent = state.loadingLessons
+    ? "Loading..."
+    : filtered.length === state.lessons.length
+      ? `${filtered.length} resources`
+      : `${filtered.length} of ${state.lessons.length} resources`;
+
+  if (state.loadingLessons) {
+    elements.lessonList.innerHTML =
+      '<p class="subtle-copy">Loading the lessons shelf...</p>';
+    return;
+  }
+
+  if (!filtered.length) {
+    elements.lessonList.innerHTML =
+      '<p class="subtle-copy">No lessons matched your search.</p>';
+    return;
+  }
+
+  for (const lesson of filtered) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "lesson-item";
+    if (lesson.id === state.selectedLessonId) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      state.selectedLessonId = lesson.id;
+      renderAll();
+    });
+    button.innerHTML = `
+      <div class="lesson-topline">
+        <span class="category-badge">${lesson.category}</span>
+        <span class="opening-size">${lesson.availableLocally ? "available here" : "catalog only"}</span>
+      </div>
+      <h4>${lesson.title}</h4>
+      <p>${lesson.author}</p>
+      <p>${lesson.focus}</p>
+    `;
+    elements.lessonList.appendChild(button);
+  }
+}
+
+function renderSelectedLesson() {
+  if (
+    !elements.selectedLessonTitle ||
+    !elements.selectedLessonMeta ||
+    !elements.selectedLessonSummary ||
+    !elements.selectedLessonFocus ||
+    !elements.selectedLessonFormat ||
+    !elements.selectedLessonTags ||
+    !elements.selectedLessonStatus ||
+    !elements.lessonOpenLink
+  ) {
+    return;
+  }
+
+  const lesson = currentLesson();
+  if (!lesson) {
+    elements.selectedLessonTitle.textContent = "Choose a lesson";
+    elements.selectedLessonMeta.textContent =
+      "Pick a lesson from the shelf to see what it covers and whether it can be opened locally.";
+    elements.selectedLessonSummary.textContent =
+      "Your study shelf will appear here after the lesson catalog loads.";
+    elements.selectedLessonFocus.textContent = "Lesson focus will appear here.";
+    elements.selectedLessonFormat.textContent = "Format details will appear here.";
+    elements.selectedLessonTags.className = "chip-row empty";
+    elements.selectedLessonTags.textContent = "No lesson selected.";
+    elements.selectedLessonStatus.className = "pill neutral";
+    elements.selectedLessonStatus.textContent = "Waiting";
+    elements.lessonOpenLink.href = "#";
+    elements.lessonOpenLink.classList.add("disabled-link");
+    elements.lessonOpenLink.setAttribute("aria-disabled", "true");
+    return;
+  }
+
+  elements.selectedLessonTitle.textContent = lesson.title;
+  elements.selectedLessonMeta.textContent =
+    `${lesson.category} • ${lesson.author} • ${lesson.sourceName}`;
+  elements.selectedLessonSummary.textContent = lesson.summary;
+  elements.selectedLessonFocus.textContent = lesson.focus;
+  elements.selectedLessonFormat.textContent =
+    `${lesson.resourceType}${lesson.sizeMb ? ` • ${lesson.sizeMb} MB` : ""}${lesson.availableLocally ? "" : " • add the file to the local Lessons folder or keep it in Downloads to open it here"}`;
+  elements.selectedLessonStatus.className = `pill ${lesson.availableLocally ? "turn-white" : "subtle"}`;
+  elements.selectedLessonStatus.textContent = lesson.availableLocally
+    ? "Openable Here"
+    : "Catalog Only";
+  elements.selectedLessonTags.innerHTML = "";
+  elements.selectedLessonTags.className = lesson.tags.length ? "chip-row" : "chip-row empty";
+  if (lesson.tags.length) {
+    for (const tag of lesson.tags) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = tag;
+      elements.selectedLessonTags.appendChild(chip);
+    }
+  } else {
+    elements.selectedLessonTags.textContent = "No lesson tags.";
+  }
+
+  if (lesson.fileUrl) {
+    elements.lessonOpenLink.href = lesson.fileUrl;
+    elements.lessonOpenLink.classList.remove("disabled-link");
+    elements.lessonOpenLink.removeAttribute("aria-disabled");
+  } else {
+    elements.lessonOpenLink.href = "#";
+    elements.lessonOpenLink.classList.add("disabled-link");
+    elements.lessonOpenLink.setAttribute("aria-disabled", "true");
+  }
 }
 
 function renderOpenings() {
@@ -1900,6 +2273,8 @@ function updateButtons() {
 }
 
 function renderAll() {
+  renderViewState();
+  renderHomeDashboard();
   renderBoard();
   renderFeedback();
   renderEngineCard();
@@ -1912,6 +2287,9 @@ function renderAll() {
   renderCategoryFilters();
   renderOpenings();
   renderVariationTree();
+  renderLessonCategories();
+  renderLessonsList();
+  renderSelectedLesson();
   updateButtons();
 }
 
@@ -1975,6 +2353,7 @@ async function loadEngineStatus() {
   }
 
   setEngineIdleState();
+  renderHomeDashboard();
   renderEngineCard();
   if (state.session && state.engine.available === true) {
     void requestEngineEvaluation();
@@ -2007,6 +2386,25 @@ async function loadDatabase() {
   }
 }
 
+async function loadLessons() {
+  state.loadingLessons = true;
+  renderAll();
+
+  try {
+    const payload = await requestJsonWithFallback(LESSONS_URLS);
+    state.lessons = payload.lessons || [];
+    if (!state.selectedLessonId || !state.lessons.some((lesson) => lesson.id === state.selectedLessonId)) {
+      state.selectedLessonId = state.lessons[0]?.id || null;
+    }
+  } catch (_error) {
+    state.lessons = [];
+    state.selectedLessonId = null;
+  } finally {
+    state.loadingLessons = false;
+    renderAll();
+  }
+}
+
 async function loadBook(opening) {
   if (state.bookCache.has(opening.id)) {
     return state.bookCache.get(opening.id);
@@ -2024,8 +2422,7 @@ async function loadRandomDrillBook(userColor) {
   }
 
   let fallback = null;
-  const attempts = Math.min(openings.length, 12);
-  for (const opening of openings.slice(0, attempts)) {
+  for (const opening of openings) {
     const book = await loadBook(opening);
     const candidate = pickDrillCandidate(book, userColor);
     if (candidate) {
@@ -2108,6 +2505,8 @@ async function startPractice() {
   try {
     if (mode === "position" || mode === "exam") {
       const selection = await loadRandomDrillBook(userColor);
+      state.selectedOpeningId = selection.opening.id;
+      state.selectedBook = selection.book;
       state.session = mode === "position"
         ? createPositionSession(selection.book, userColor, depth, selection.candidate)
         : createExamSession(selection.book, userColor, depth, selection.candidate);
@@ -2266,7 +2665,6 @@ async function setupOfflineSupport() {
 
   try {
     await navigator.serviceWorker.register("./sw.js");
-    await navigator.serviceWorker.ready;
     state.offlineStatus = navigator.onLine
       ? "Offline support is ready. Loaded openings stay available offline."
       : "Offline mode is active.";
@@ -2298,6 +2696,77 @@ elements.searchInput.addEventListener("input", (event) => {
   state.search = event.target.value;
   renderOpenings();
 });
+
+if (elements.lessonSearchInput) {
+  elements.lessonSearchInput.addEventListener("input", (event) => {
+    state.lessonSearch = event.target.value;
+    const visible = filteredLessons();
+    if (!visible.some((lesson) => lesson.id === state.selectedLessonId)) {
+      state.selectedLessonId = visible[0]?.id || null;
+    }
+    renderAll();
+  });
+}
+
+if (elements.homeNav) {
+  elements.homeNav.addEventListener("click", () => {
+    setActiveView("home");
+  });
+}
+
+if (elements.practiceNav) {
+  elements.practiceNav.addEventListener("click", () => {
+    setActiveView("practice");
+  });
+}
+
+if (elements.lessonsNav) {
+  elements.lessonsNav.addEventListener("click", () => {
+    setActiveView("lessons");
+  });
+}
+
+if (elements.enterPractice) {
+  elements.enterPractice.addEventListener("click", () => {
+    setActiveView("practice");
+  });
+}
+
+if (elements.enterLessons) {
+  elements.enterLessons.addEventListener("click", () => {
+    setActiveView("lessons");
+  });
+}
+
+if (elements.backHomePractice) {
+  elements.backHomePractice.addEventListener("click", () => {
+    setActiveView("home");
+  });
+}
+
+if (elements.openLessonsFromPractice) {
+  elements.openLessonsFromPractice.addEventListener("click", () => {
+    setActiveView("lessons");
+  });
+}
+
+if (elements.backHomeLessons) {
+  elements.backHomeLessons.addEventListener("click", () => {
+    setActiveView("home");
+  });
+}
+
+if (elements.openPracticeFromLessons) {
+  elements.openPracticeFromLessons.addEventListener("click", () => {
+    setActiveView("practice");
+  });
+}
+
+if (elements.lessonPracticeLink) {
+  elements.lessonPracticeLink.addEventListener("click", () => {
+    setActiveView("practice");
+  });
+}
 
 if (elements.lineTab) {
   elements.lineTab.addEventListener("click", () => {
@@ -2361,4 +2830,5 @@ elements.resetBtn.addEventListener("click", () => {
 void setupOfflineSupport();
 void loadEngineStatus();
 void loadDatabase();
+void loadLessons();
 renderAll();

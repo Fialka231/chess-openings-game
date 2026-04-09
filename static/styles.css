@@ -45,6 +45,11 @@ select {
   font: inherit;
 }
 
+.app-shell {
+  display: grid;
+  gap: 18px;
+}
+
 .page-shell {
   width: min(1240px, calc(100vw - 24px));
   margin: 0 auto;
@@ -58,6 +63,78 @@ select {
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
   animation: rise-in 260ms ease-out;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.brand-button,
+.nav-chip {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.brand-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  color: var(--text);
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(49, 64, 51, 0.98), rgba(92, 105, 74, 0.92));
+  color: #f8f4e9;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.brand-copy {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.brand-copy strong {
+  font-size: 1.05rem;
+}
+
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.nav-chip {
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: rgba(49, 64, 51, 0.08);
+  color: var(--olive);
+  font-weight: 700;
+}
+
+.nav-chip.active {
+  background: rgba(180, 94, 58, 0.16);
+  color: var(--accent-dark);
+}
+
+.brand-button.active .brand-mark {
+  box-shadow: 0 0 0 3px rgba(180, 94, 58, 0.18);
 }
 
 .hero {
@@ -88,6 +165,111 @@ select {
   margin: 0;
   color: rgba(248, 244, 233, 0.88);
   line-height: 1.6;
+}
+
+.hero-home {
+  padding: 32px 28px;
+}
+
+.portal-grid,
+.home-strip,
+.lesson-track-grid,
+.lesson-detail-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.portal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.portal-card {
+  text-align: left;
+  width: 100%;
+  border: none;
+  padding: 22px;
+  cursor: pointer;
+  display: grid;
+  gap: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.46), transparent 34%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.84), rgba(244, 238, 223, 0.92));
+}
+
+.portal-card h2 {
+  margin: 0;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  font-size: clamp(1.6rem, 2vw, 2.15rem);
+}
+
+.portal-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.portal-stats,
+.lesson-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.portal-stat {
+  min-width: 132px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(49, 64, 51, 0.08);
+}
+
+.portal-stat strong {
+  display: block;
+  font-size: 1.6rem;
+  color: var(--accent-dark);
+}
+
+.portal-stat span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.home-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-note {
+  padding: 18px;
+}
+
+.home-note p:last-child {
+  margin: 10px 0 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px;
+}
+
+.section-head h1 {
+  margin: 8px 0 10px;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  line-height: 1.02;
+}
+
+.practice-copy {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .layout {
@@ -443,6 +625,10 @@ select {
   border-bottom-style: dashed;
 }
 
+.primary-btn.disabled-link {
+  border-bottom: none;
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -624,6 +810,7 @@ select {
   border-radius: 14px;
   padding: 12px 14px;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .primary-btn:disabled,
@@ -636,11 +823,119 @@ select {
   background: linear-gradient(135deg, var(--accent) 0%, #cc7a46 100%);
   color: #fff6ef;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ghost-btn {
   background: rgba(49, 64, 51, 0.08);
   color: var(--olive);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lessons-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.35fr);
+  gap: 18px;
+}
+
+.lessons-sidebar,
+.lessons-detail-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.lessons-controls,
+.lessons-list-card,
+.lessons-overview,
+.lesson-detail-card {
+  padding: 18px;
+}
+
+.lesson-track-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.track-card {
+  padding: 14px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.45), transparent 32%),
+    rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(93, 106, 91, 0.12);
+}
+
+.track-card h3 {
+  margin: 8px 0 6px;
+}
+
+.track-card p:last-child {
+  margin: 0;
+}
+
+.lesson-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  max-height: 720px;
+  overflow: auto;
+}
+
+.lesson-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(93, 106, 91, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 14px;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+}
+
+.lesson-item.active {
+  background: rgba(180, 94, 58, 0.14);
+  border-color: rgba(180, 94, 58, 0.42);
+}
+
+.lesson-topline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.lesson-item h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.lesson-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.lesson-summary {
+  margin: 16px 0;
+  line-height: 1.65;
+  font-size: 1.02rem;
+}
+
+.lesson-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.lesson-copy {
+  margin: 10px 0 0;
+  line-height: 1.55;
 }
 
 .opening-list {
@@ -810,6 +1105,11 @@ select {
     --board-size: min(88vw, 520px);
   }
 
+  .portal-grid,
+  .home-strip,
+  .lessons-layout,
+  .lesson-track-grid,
+  .lesson-detail-grid,
   .layout,
   .board-panel {
     grid-template-columns: 1fr;
@@ -843,7 +1143,10 @@ select {
   .board-header,
   .row-head,
   .status-block,
-  .opening-topline {
+  .opening-topline,
+  .section-head,
+  .topbar,
+  .lesson-topline {
     flex-direction: column;
     align-items: stretch;
   }
@@ -863,6 +1166,12 @@ select {
   .database-links {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .portal-stats,
+  .lesson-actions,
+  .topbar-actions {
+    flex-direction: column;
   }
 
   .practice-tabs {

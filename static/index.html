@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Practice Queen's Pawn and King's Pawn opening lines from your own repertoire."
+      content="Practice your opening repertoire, drill realistic positions, and study from a built-in chess lessons shelf."
     />
     <meta name="theme-color" content="#263128" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,293 +17,511 @@
     <title>Opening Trainer</title>
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero card">
-        <p class="eyebrow">Offline-Ready Repertoire Trainer</p>
-        <h1>Opening Practice</h1>
-        <p class="hero-copy">
-          Turn your Queen's Pawn and King's Pawn ZIP files into a searchable opening
-          database, then practice the lines from a clean phone-friendly board you can
-          install as a web app.
-        </p>
+    <div class="page-shell app-shell">
+      <header class="topbar card">
+        <button id="home-nav" class="brand-button" type="button">
+          <span class="brand-mark">OL</span>
+          <span class="brand-copy">
+            <span class="eyebrow">Chess Study Suite</span>
+            <strong>Opening Practice</strong>
+          </span>
+        </button>
+
+        <div class="topbar-actions">
+          <button id="practice-nav" class="nav-chip" type="button">Practice</button>
+          <button id="lessons-nav" class="nav-chip" type="button">Lessons</button>
+        </div>
       </header>
 
-      <main class="layout">
-        <section class="board-column">
-          <div class="board-header card">
-            <div>
-              <p class="panel-label">Current Practice</p>
-              <h2 id="current-opening">Choose an opening</h2>
-              <p id="current-meta" class="subtle-copy current-meta">
-                Load an opening to see its repertoire group and source file.
-              </p>
-            </div>
-            <div class="status-block">
-              <span id="turn-pill" class="pill neutral">Waiting</span>
-              <span id="depth-pill" class="pill subtle">Depth 12 plies</span>
-            </div>
-          </div>
-
-          <div class="board-panel card">
-            <div class="board-stage">
-              <div class="board-frame">
-                <div id="board" class="board" aria-label="Chess board"></div>
-              </div>
-            </div>
-
-            <div class="board-side">
-              <div id="feedback" class="feedback neutral">
-                Select an opening on the right, then start a practice session.
-              </div>
-
-              <div class="info-card engine-card">
-                <div class="row-head">
-                  <p class="panel-label">Stockfish Eval</p>
-                  <span id="engine-status" class="subtle-copy">Checking engine status...</span>
-                </div>
-                <div id="engine-score" class="engine-score neutral">Waiting</div>
-                <p id="engine-detail" class="subtle-copy engine-detail">
-                  Start a line or drill to see an evaluation of the current position.
-                </p>
-                <div id="engine-best" class="engine-best subtle-copy">
-                  The app can use a local engine or bundled browser Stockfish for phone-friendly analysis.
-                </div>
-              </div>
-
-              <div class="info-card">
-                <p class="panel-label">Book Moves</p>
-                <div id="expected-moves" class="chip-row empty">No opening loaded yet.</div>
-              </div>
-
-              <div class="info-card">
-                <div class="row-head">
-                  <p class="panel-label">Move List</p>
-                  <div class="row-actions">
-                    <button id="undo-btn" class="ghost-btn" disabled>Take Back</button>
-                    <button id="reset-btn" class="ghost-btn" disabled>Reset</button>
-                  </div>
-                </div>
-                <div id="history" class="history empty">No moves yet.</div>
-              </div>
-            </div>
-          </div>
+      <section id="home-view" class="view view-home">
+        <section class="hero hero-home card">
+          <p class="eyebrow">Train, Study, Repeat</p>
+          <h1>Build your opening memory and your overall chess understanding.</h1>
+          <p class="hero-copy">
+            Start from a focused home screen, jump into drills that enforce one real line at
+            a time, or open the lessons shelf to study strategy, tactics, endgames, and
+            opening ideas from your own library.
+          </p>
         </section>
 
-        <aside class="sidebar">
-          <section class="card controls">
-            <div class="info-card install-card">
-              <p class="panel-label">Install On iPhone</p>
-              <p class="subtle-copy">
-                Open this app in Safari, tap Share, then choose Add to Home Screen.
-                Openings you load are kept for offline practice.
-              </p>
-              <p id="offline-status" class="subtle-copy offline-status">
-                Offline support is loading.
-              </p>
+        <section class="portal-grid">
+          <button id="enter-practice" class="portal-card card" type="button">
+            <p class="panel-label">Play</p>
+            <h2>Practice Arena</h2>
+            <p>
+              Train lines, realistic drills, and blind recall with Stockfish feedback and
+              strict move validation.
+            </p>
+            <div class="portal-stats">
+              <div class="portal-stat">
+                <strong id="home-opening-count">...</strong>
+                <span>opening books</span>
+              </div>
+              <div class="portal-stat">
+                <strong>3</strong>
+                <span>training modes</span>
+              </div>
+            </div>
+          </button>
+
+          <button id="enter-lessons" class="portal-card card" type="button">
+            <p class="panel-label">Learn</p>
+            <h2>Lessons Library</h2>
+            <p>
+              Browse curated books and training resources for openings, strategy, tactics,
+              endgames, and chess psychology.
+            </p>
+            <div class="portal-stats">
+              <div class="portal-stat">
+                <strong id="home-lesson-count">...</strong>
+                <span>study resources</span>
+              </div>
+              <div class="portal-stat">
+                <strong id="home-lesson-category-count">...</strong>
+                <span>learning tracks</span>
+              </div>
+            </div>
+          </button>
+        </section>
+
+        <section class="home-strip">
+          <div class="home-note card">
+            <p class="panel-label">Opening Work</p>
+            <p class="subtle-copy">
+              Practice pages keep the same board and piece set, but focus the UI on the
+              current training task instead of showing everything at once.
+            </p>
+          </div>
+          <div class="home-note card">
+            <p class="panel-label">Install On iPhone</p>
+            <p id="offline-status" class="subtle-copy offline-status">
+              Offline support is loading.
+            </p>
+          </div>
+          <div class="home-note card">
+            <p class="panel-label">Engine</p>
+            <p id="home-engine-note" class="subtle-copy">
+              Checking whether local or browser Stockfish analysis is available.
+            </p>
+          </div>
+        </section>
+      </section>
+
+      <section id="practice-view" class="view" hidden>
+        <header class="section-head card">
+          <div>
+            <p class="eyebrow">Practice Arena</p>
+            <h1>Opening training</h1>
+            <p class="hero-copy practice-copy">
+              Drill one opening at a time, jump into realistic positions, or use blind recall
+              to test memory without move hints.
+            </p>
+          </div>
+          <div class="section-actions">
+            <button id="back-home-practice" class="ghost-btn" type="button">Home</button>
+            <button id="open-lessons-from-practice" class="ghost-btn" type="button">Lessons</button>
+          </div>
+        </header>
+
+        <main class="layout">
+          <section class="board-column">
+            <div class="board-header card">
+              <div>
+                <p class="panel-label">Current Practice</p>
+                <h2 id="current-opening">Choose an opening</h2>
+                <p id="current-meta" class="subtle-copy current-meta">
+                  Load an opening to see its repertoire group and source file.
+                </p>
+              </div>
+              <div class="status-block">
+                <span id="turn-pill" class="pill neutral">Waiting</span>
+                <span id="depth-pill" class="pill subtle">Depth 12 plies</span>
+              </div>
             </div>
 
-            <div class="info-card database-card">
-              <p class="panel-label">Opening Database</p>
-              <p id="database-summary" class="subtle-copy">
-                Loading the opening database index...
-              </p>
-              <div class="database-links">
-                <a
-                  id="database-index-link"
-                  class="text-link"
-                  href="./data/database.json"
-                  target="_blank"
-                  rel="noreferrer"
+            <div class="board-panel card">
+              <div class="board-stage">
+                <div class="board-frame">
+                  <div id="board" class="board" aria-label="Chess board"></div>
+                </div>
+              </div>
+
+              <div class="board-side">
+                <div id="feedback" class="feedback neutral">
+                  Select an opening on the right, then start a practice session.
+                </div>
+
+                <div class="info-card engine-card">
+                  <div class="row-head">
+                    <p class="panel-label">Stockfish Eval</p>
+                    <span id="engine-status" class="subtle-copy">Checking engine status...</span>
+                  </div>
+                  <div id="engine-score" class="engine-score neutral">Waiting</div>
+                  <p id="engine-detail" class="subtle-copy engine-detail">
+                    Start a line or drill to see an evaluation of the current position.
+                  </p>
+                  <div id="engine-best" class="engine-best subtle-copy">
+                    The app can use a local engine or bundled browser Stockfish for phone-friendly analysis.
+                  </div>
+                </div>
+
+                <div class="info-card">
+                  <p class="panel-label">Book Moves</p>
+                  <div id="expected-moves" class="chip-row empty">No opening loaded yet.</div>
+                </div>
+
+                <div class="info-card">
+                  <div class="row-head">
+                    <p class="panel-label">Move List</p>
+                    <div class="row-actions">
+                      <button id="undo-btn" class="ghost-btn" disabled>Take Back</button>
+                      <button id="reset-btn" class="ghost-btn" disabled>Reset</button>
+                    </div>
+                  </div>
+                  <div id="history" class="history empty">No moves yet.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="sidebar">
+            <section class="card controls">
+              <div class="info-card install-card">
+                <p class="panel-label">Practice Setup</p>
+                <p class="subtle-copy">
+                  Choose an opening, pick the mode, and start training. Realistic Drill and
+                  Blind Recall always pick one concrete line so only the intended moves count.
+                </p>
+              </div>
+
+              <div class="info-card database-card">
+                <p class="panel-label">Opening Database</p>
+                <p id="database-summary" class="subtle-copy">
+                  Loading the opening database index...
+                </p>
+                <div class="database-links">
+                  <a
+                    id="database-index-link"
+                    class="text-link"
+                    href="./data/database.json"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open catalog JSON
+                  </a>
+                  <a
+                    id="selected-book-link"
+                    class="text-link disabled-link"
+                    href="./data/database.json"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-disabled="true"
+                  >
+                    Open selected book JSON
+                  </a>
+                </div>
+              </div>
+
+              <div class="control-block">
+                <label class="panel-label">Repertoire</label>
+                <div id="category-filters" class="filter-row"></div>
+              </div>
+
+              <div class="control-block">
+                <label class="panel-label" for="search-input">Find an opening</label>
+                <input id="search-input" type="search" placeholder="Search zip names..." />
+              </div>
+
+              <div class="practice-tabs" role="tablist" aria-label="Practice mode">
+                <button
+                  id="line-tab"
+                  class="practice-tab active"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="line-panel"
                 >
-                  Open catalog JSON
-                </a>
+                  Line Play
+                </button>
+                <button
+                  id="position-tab"
+                  class="practice-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="position-panel"
+                >
+                  Realistic Drill
+                </button>
+                <button
+                  id="exam-tab"
+                  class="practice-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="exam-panel"
+                >
+                  Blind Recall
+                </button>
+              </div>
+
+              <section
+                id="line-panel"
+                class="mode-panel"
+                role="tabpanel"
+                aria-labelledby="line-tab"
+              >
+                <p class="subtle-copy mode-copy">
+                  Start from move 1 and answer the trainer's book moves until the stored line ends.
+                </p>
+                <div class="split-controls">
+                  <div class="control-block">
+                    <label class="panel-label" for="line-side-select">Practice side</label>
+                    <select id="line-side-select">
+                      <option value="white">White</option>
+                      <option value="black">Black</option>
+                    </select>
+                  </div>
+
+                  <div class="control-block">
+                    <label class="panel-label" for="line-depth-select">Line depth</label>
+                    <select id="line-depth-select">
+                      <option value="10">10 plies</option>
+                      <option value="12" selected>12 plies</option>
+                      <option value="16">16 plies</option>
+                      <option value="20">20 plies</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              <section
+                id="position-panel"
+                class="mode-panel"
+                role="tabpanel"
+                aria-labelledby="position-tab"
+                hidden
+              >
+                <p class="subtle-copy mode-copy">
+                  Jump into a random opening from the full database, starting 2-3 moves in.
+                  Only the chosen continuation counts, and any wrong move resets the same position.
+                </p>
+                <div class="split-controls">
+                  <div class="control-block">
+                    <label class="panel-label" for="drill-side-select">Practice side</label>
+                    <select id="drill-side-select">
+                      <option value="white">White</option>
+                      <option value="black">Black</option>
+                    </select>
+                  </div>
+
+                  <div class="drill-stats" aria-label="Drill format">
+                    <div class="drill-stat">
+                      <strong>strict</strong>
+                      <span>one line only</span>
+                    </div>
+                    <div class="drill-stat">
+                      <strong>2-3</strong>
+                      <span>moves to solve</span>
+                    </div>
+                    <div class="drill-stat">
+                      <strong>reset</strong>
+                      <span>on wrong move</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section
+                id="exam-panel"
+                class="mode-panel"
+                role="tabpanel"
+                aria-labelledby="exam-tab"
+                hidden
+              >
+                <p class="subtle-copy mode-copy">
+                  Jump into a random opening from the full database with no move hints.
+                  Every legal move can be played, but only the stored continuation is accepted.
+                </p>
+                <div class="split-controls">
+                  <div class="control-block">
+                    <label class="panel-label" for="exam-side-select">Practice side</label>
+                    <select id="exam-side-select">
+                      <option value="white">White</option>
+                      <option value="black">Black</option>
+                    </select>
+                  </div>
+
+                  <div class="drill-stats" aria-label="Blind recall format">
+                    <div class="drill-stat">
+                      <strong>hidden</strong>
+                      <span>no move hints</span>
+                    </div>
+                    <div class="drill-stat">
+                      <strong>strict</strong>
+                      <span>one line only</span>
+                    </div>
+                    <div class="drill-stat">
+                      <strong>retry</strong>
+                      <span>same position</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <button id="start-btn" class="primary-btn" disabled>Start Practice</button>
+            </section>
+
+            <section class="card openings-card">
+              <div class="row-head">
+                <div>
+                  <p class="panel-label">Opening Files</p>
+                  <h3 id="opening-count">Loading...</h3>
+                </div>
+                <span class="subtle-copy">Searchable opening database for offline play</span>
+              </div>
+              <div id="opening-list" class="opening-list"></div>
+            </section>
+
+            <details class="card variation-card" open>
+              <summary>
+                <div>
+                  <p class="panel-label">Variation Tree</p>
+                  <h3 id="variation-title">Select an opening</h3>
+                </div>
+              </summary>
+              <div id="variation-stats" class="stats-grid empty">No opening selected.</div>
+              <div id="tree" class="tree empty">The opening tree will appear here.</div>
+            </details>
+          </aside>
+        </main>
+      </section>
+
+      <section id="lessons-view" class="view" hidden>
+        <header class="section-head card">
+          <div>
+            <p class="eyebrow">Lessons Library</p>
+            <h1>Study shelf</h1>
+            <p class="hero-copy practice-copy">
+              Use your chess book collection as a guided learning area inside the app. The
+              hosted site shows the catalog, and local runs can open the files available on
+              this machine.
+            </p>
+          </div>
+          <div class="section-actions">
+            <button id="back-home-lessons" class="ghost-btn" type="button">Home</button>
+            <button id="open-practice-from-lessons" class="ghost-btn" type="button">Practice</button>
+          </div>
+        </header>
+
+        <main class="lessons-layout">
+          <aside class="lessons-sidebar">
+            <section class="card lessons-controls">
+              <div class="control-block">
+                <label class="panel-label" for="lesson-search-input">Find a lesson</label>
+                <input id="lesson-search-input" type="search" placeholder="Search titles, authors, tags..." />
+              </div>
+              <div class="control-block">
+                <label class="panel-label">Lesson Track</label>
+                <div id="lesson-category-filters" class="filter-row"></div>
+              </div>
+            </section>
+
+            <section class="card lessons-list-card">
+              <div class="row-head">
+                <div>
+                  <p class="panel-label">Library</p>
+                  <h3 id="lesson-count">Loading...</h3>
+                </div>
+                <span class="subtle-copy">Curated from your local chess resources</span>
+              </div>
+              <div id="lesson-list" class="lesson-list"></div>
+            </section>
+          </aside>
+
+          <section class="lessons-detail-column">
+            <section class="card lessons-overview">
+              <div class="lesson-track-grid">
+                <div class="track-card">
+                  <p class="panel-label">Openings</p>
+                  <h3>Repertoire context</h3>
+                  <p class="subtle-copy">
+                    Pair your drills with broader opening references and 1.d4 study material.
+                  </p>
+                </div>
+                <div class="track-card">
+                  <p class="panel-label">Core Chess</p>
+                  <h3>Plans and strategy</h3>
+                  <p class="subtle-copy">
+                    Use classics like <em>My System</em> and annotated games to connect moves to plans.
+                  </p>
+                </div>
+                <div class="track-card">
+                  <p class="panel-label">Practical Strength</p>
+                  <h3>Tactics and endgames</h3>
+                  <p class="subtle-copy">
+                    Balance pattern work, technical endings, and psychology alongside opening memory.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section class="card lesson-detail-card">
+              <div class="row-head">
+                <div>
+                  <p class="panel-label">Selected Lesson</p>
+                  <h2 id="selected-lesson-title">Choose a lesson</h2>
+                </div>
+                <span id="selected-lesson-status" class="pill neutral">Waiting</span>
+              </div>
+
+              <p id="selected-lesson-meta" class="subtle-copy current-meta">
+                Pick a lesson from the shelf to see what it covers and whether it can be opened locally.
+              </p>
+
+              <p id="selected-lesson-summary" class="lesson-summary">
+                Your study shelf will appear here after the lesson catalog loads.
+              </p>
+
+              <div class="lesson-detail-grid">
+                <div class="info-card">
+                  <p class="panel-label">Focus</p>
+                  <p id="selected-lesson-focus" class="subtle-copy lesson-copy">
+                    Lesson focus will appear here.
+                  </p>
+                </div>
+                <div class="info-card">
+                  <p class="panel-label">Format</p>
+                  <p id="selected-lesson-format" class="subtle-copy lesson-copy">
+                    Format details will appear here.
+                  </p>
+                </div>
+              </div>
+
+              <div class="info-card">
+                <p class="panel-label">Tags</p>
+                <div id="selected-lesson-tags" class="chip-row empty">No lesson selected.</div>
+              </div>
+
+              <div class="lesson-actions">
                 <a
-                  id="selected-book-link"
-                  class="text-link disabled-link"
-                  href="./data/database.json"
+                  id="lesson-open-link"
+                  class="primary-btn disabled-link"
+                  href="#"
                   target="_blank"
                   rel="noreferrer"
                   aria-disabled="true"
                 >
-                  Open selected book JSON
+                  Open Lesson
                 </a>
-              </div>
-            </div>
-
-            <div class="control-block">
-              <label class="panel-label">Repertoire</label>
-              <div id="category-filters" class="filter-row"></div>
-            </div>
-
-            <div class="control-block">
-              <label class="panel-label" for="search-input">Find an opening</label>
-              <input id="search-input" type="search" placeholder="Search zip names..." />
-            </div>
-
-            <div class="practice-tabs" role="tablist" aria-label="Practice mode">
-              <button
-                id="line-tab"
-                class="practice-tab active"
-                type="button"
-                role="tab"
-                aria-selected="true"
-                aria-controls="line-panel"
-              >
-                Line Play
-              </button>
-              <button
-                id="position-tab"
-                class="practice-tab"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="position-panel"
-              >
-                Realistic Drill
-              </button>
-              <button
-                id="exam-tab"
-                class="practice-tab"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="exam-panel"
-              >
-                Blind Recall
-              </button>
-            </div>
-
-            <section
-              id="line-panel"
-              class="mode-panel"
-              role="tabpanel"
-              aria-labelledby="line-tab"
-            >
-              <p class="subtle-copy mode-copy">
-                Start from move 1 and answer the trainer's book moves until the stored line ends.
-              </p>
-              <div class="split-controls">
-                <div class="control-block">
-                  <label class="panel-label" for="line-side-select">Practice side</label>
-                  <select id="line-side-select">
-                    <option value="white">White</option>
-                    <option value="black">Black</option>
-                  </select>
-                </div>
-
-                <div class="control-block">
-                  <label class="panel-label" for="line-depth-select">Line depth</label>
-                  <select id="line-depth-select">
-                    <option value="10">10 plies</option>
-                    <option value="12" selected>12 plies</option>
-                    <option value="16">16 plies</option>
-                    <option value="20">20 plies</option>
-                  </select>
-                </div>
+                <button id="lesson-practice-link" class="ghost-btn" type="button">
+                  Go To Practice
+                </button>
               </div>
             </section>
-
-            <section
-              id="position-panel"
-              class="mode-panel"
-              role="tabpanel"
-              aria-labelledby="position-tab"
-              hidden
-            >
-              <p class="subtle-copy mode-copy">
-                Jump into a random opening from the full database, starting 2-3 moves in.
-                You must find the next 2-3 correct moves, and any wrong move resets the same position.
-              </p>
-              <div class="split-controls">
-                <div class="control-block">
-                  <label class="panel-label" for="drill-side-select">Practice side</label>
-                  <select id="drill-side-select">
-                    <option value="white">White</option>
-                    <option value="black">Black</option>
-                  </select>
-                </div>
-
-                <div class="drill-stats" aria-label="Drill format">
-                  <div class="drill-stat">
-                    <strong>full</strong>
-                    <span>database mixed</span>
-                  </div>
-                  <div class="drill-stat">
-                    <strong>2-3</strong>
-                    <span>moves to solve</span>
-                  </div>
-                  <div class="drill-stat">
-                    <strong>reset</strong>
-                    <span>on wrong move</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section
-              id="exam-panel"
-              class="mode-panel"
-              role="tabpanel"
-              aria-labelledby="exam-tab"
-              hidden
-            >
-              <p class="subtle-copy mode-copy">
-                Jump into a random opening from the full database with no move hints.
-                Every legal move can be played, but only the stored book continuation is marked correct.
-                Wrong moves reset the same test position so you can try again immediately.
-              </p>
-              <div class="split-controls">
-                <div class="control-block">
-                  <label class="panel-label" for="exam-side-select">Practice side</label>
-                  <select id="exam-side-select">
-                    <option value="white">White</option>
-                    <option value="black">Black</option>
-                  </select>
-                </div>
-
-                <div class="drill-stats" aria-label="Blind recall format">
-                  <div class="drill-stat">
-                    <strong>hidden</strong>
-                    <span>no move hints</span>
-                  </div>
-                  <div class="drill-stat">
-                    <strong>legal</strong>
-                    <span>all moves allowed</span>
-                  </div>
-                  <div class="drill-stat">
-                    <strong>reset</strong>
-                    <span>retry same test</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <button id="start-btn" class="primary-btn" disabled>Start Practice</button>
           </section>
-
-          <section class="card openings-card">
-            <div class="row-head">
-              <div>
-                <p class="panel-label">Opening Files</p>
-                <h3 id="opening-count">Loading...</h3>
-              </div>
-              <span class="subtle-copy">Searchable opening database for offline play</span>
-            </div>
-            <div id="opening-list" class="opening-list"></div>
-          </section>
-
-          <details class="card variation-card" open>
-            <summary>
-              <div>
-                <p class="panel-label">Variation Tree</p>
-                <h3 id="variation-title">Select an opening</h3>
-              </div>
-            </summary>
-            <div id="variation-stats" class="stats-grid empty">No opening selected.</div>
-            <div id="tree" class="tree empty">The opening tree will appear here.</div>
-          </details>
-        </aside>
-      </main>
+        </main>
+      </section>
     </div>
 
     <script type="module" src="./app.js"></script>

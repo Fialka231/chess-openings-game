@@ -53,17 +53,21 @@ class OpeningTrainerTests(unittest.TestCase):
             self.assertEqual(len(manifest["openings"]), 2)
             self.assertTrue((output_root / "library.json").exists())
             self.assertTrue((output_root / "database.json").exists())
+            self.assertTrue((output_root / "lessons.json").exists())
             self.assertTrue((output_root / "books" / f"{self.qp_id}.json").exists())
             self.assertTrue((output_root / "books" / f"{self.kp_id}.json").exists())
 
             payload = json.loads((output_root / "library.json").read_text(encoding="utf-8"))
             database_payload = json.loads((output_root / "database.json").read_text(encoding="utf-8"))
+            lessons_payload = json.loads((output_root / "lessons.json").read_text(encoding="utf-8"))
             manifest_ids = {opening["id"] for opening in payload["openings"]}
             database_ids = {opening["id"] for opening in database_payload["openings"]}
             self.assertEqual(manifest_ids, {self.qp_id, self.kp_id})
             self.assertEqual(database_ids, {self.qp_id, self.kp_id})
             self.assertEqual(database_payload["formatVersion"], 2)
             self.assertTrue(database_payload["inputsSignature"])
+            self.assertGreaterEqual(len(lessons_payload["lessons"]), 10)
+            self.assertIn("my-system", {lesson["id"] for lesson in lessons_payload["lessons"]})
 
             book_payload = json.loads(
                 (output_root / "books" / f"{self.qp_id}.json").read_text(encoding="utf-8")

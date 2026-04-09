@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import io
 import json
+import mimetypes
 import os
 import re
 import shutil
@@ -36,6 +37,157 @@ STATIC_ROOT = PROJECT_ROOT / "static"
 DATA_ROOT = STATIC_ROOT / "data"
 BOOKS_ROOT = DATA_ROOT / "books"
 ICONS_ROOT = STATIC_ROOT / "icons"
+LOCAL_LESSONS_ROOT = PROJECT_ROOT / "Lessons"
+DOWNLOADS_ROOT = Path.home() / "Downloads"
+
+
+@dataclass(frozen=True)
+class LessonSource:
+    lesson_id: str
+    title: str
+    author: str
+    category: str
+    resource_type: str
+    focus: str
+    summary: str
+    filename: str
+    tags: tuple[str, ...]
+
+
+LESSON_LIBRARY: tuple[LessonSource, ...] = (
+    LessonSource(
+        lesson_id="chess-opening-essentials-vol-4",
+        title="Chess Opening Essentials (Volume 4)",
+        author="Stefan Djuric, Dimitri Komarov, Claudio Pantaleoni",
+        category="Openings",
+        resource_type="Book",
+        focus="Practical opening structures, model plans, and repertoire orientation.",
+        summary="A broad opening reference that helps connect early move orders to the middlegame plans that follow.",
+        filename="Chess Opening Essentials (Volume 4).pdf",
+        tags=("openings", "repertoire", "middlegame plans"),
+    ),
+    LessonSource(
+        lesson_id="modern-chess-openings-15",
+        title="Modern Chess Openings (15th Edition)",
+        author="Nick de Firmian",
+        category="Openings",
+        resource_type="Reference",
+        focus="Encyclopedic opening lookup and move-order reference.",
+        summary="Use this as the deeper reference shelf when you want to compare sidelines, transpositions, and broader theory.",
+        filename="kupdf.net_modern-chess-openings-15th-edition.pdf",
+        tags=("openings", "reference", "theory"),
+    ),
+    LessonSource(
+        lesson_id="attacking-with-1d4",
+        title="Attacking with 1.d4",
+        author="Angus Dunnington",
+        category="Openings",
+        resource_type="Course Pack",
+        focus="Aggressive Queen's Pawn structures and practical attacking setups.",
+        summary="A repertoire-oriented resource that fits naturally beside your opening trainer work for 1.d4 systems.",
+        filename="6.-attacking-with-1d-4-angus-dunnington.zip",
+        tags=("openings", "1.d4", "attacking"),
+    ),
+    LessonSource(
+        lesson_id="my-system",
+        title="My System",
+        author="Aron Nimzowitsch",
+        category="Strategy",
+        resource_type="Book",
+        focus="Prophylaxis, pawn chains, restraint, and classical positional play.",
+        summary="A cornerstone strategy book for understanding why plans work, not just which moves appear in theory.",
+        filename="My System.pdf",
+        tags=("strategy", "positional play", "planning"),
+    ),
+    LessonSource(
+        lesson_id="logical-chess-move-by-move",
+        title="Logical Chess: Move by Move",
+        author="Irving Chernev",
+        category="Annotated Games",
+        resource_type="Book",
+        focus="Explain every move and connect opening choices to practical plans.",
+        summary="Ideal for turning abstract ideas into readable, move-by-move decisions you can mimic in your own games.",
+        filename="Chessbook - Irving Chernev - Logical Chess - Move by Move.pdf",
+        tags=("annotated games", "planning", "decision making"),
+    ),
+    LessonSource(
+        lesson_id="improve-your-chess-now",
+        title="Improve Your Chess Now",
+        author="Jonathan Tisdall",
+        category="Strategy",
+        resource_type="Book",
+        focus="Thought process, imbalances, and practical decision quality.",
+        summary="A strong bridge from theory to calculation, helping you choose plans and candidate moves with more structure.",
+        filename="Improve_Your_Chess_Now.pdf",
+        tags=("strategy", "calculation", "candidate moves"),
+    ),
+    LessonSource(
+        lesson_id="better-chess-for-young-players",
+        title="Better Chess For Young Players",
+        author="Murray Chandler",
+        category="Training",
+        resource_type="Book",
+        focus="Core chess habits and accessible improvement principles.",
+        summary="A practical study guide with beginner-friendly explanations that still support serious long-term improvement.",
+        filename="Better Chess For Young Players (small).pdf",
+        tags=("training", "fundamentals", "improvement"),
+    ),
+    LessonSource(
+        lesson_id="what-it-takes-to-become-a-chess-master",
+        title="What It Takes To Become a Chess Master",
+        author="Andrew Soltis",
+        category="Training",
+        resource_type="Book",
+        focus="How strong players train, evaluate positions, and convert improvement into results.",
+        summary="A study companion for structuring your improvement work beyond openings alone.",
+        filename="What_It_Takes_To_Become_a_Chess_Master.pdf",
+        tags=("training", "mastery", "improvement"),
+    ),
+    LessonSource(
+        lesson_id="the-will-to-win",
+        title="Chess Psychology: The Will to Win!",
+        author="William Stewart",
+        category="Psychology",
+        resource_type="Book",
+        focus="Competitive mindset, confidence, and emotional control.",
+        summary="A psychology shelf item for handling nerves, momentum swings, and practical confidence at the board.",
+        filename="Chess Psychology - William Stewart - The Will to Win!.pdf",
+        tags=("psychology", "competition", "mindset"),
+    ),
+    LessonSource(
+        lesson_id="1000-mate-in-2",
+        title="1000 Chess Exercises: Mate in 2 Moves",
+        author="Unknown / Compilation",
+        category="Tactics",
+        resource_type="Workbook",
+        focus="Fast mating-pattern recognition and tactical repetition.",
+        summary="A dense tactics drill source for sharpening pattern recognition away from the opening trainer.",
+        filename="1000-chess-exercises-mate-in-2-moves.pdf",
+        tags=("tactics", "mate in 2", "pattern recognition"),
+    ),
+    LessonSource(
+        lesson_id="bobby-fischer-teaches-chess",
+        title="Bobby Fischer Teaches Chess",
+        author="Bobby Fischer, Stuart Margulies, Donn Mosenfelder",
+        category="Tactics",
+        resource_type="Workbook",
+        focus="Basic tactical motifs, mating nets, and forcing play.",
+        summary="A classic workbook format that reinforces tactical discipline in a simple, direct way.",
+        filename="Bobby_Fischer_Teaches_Chess_by_Bobby_Fischer.pdf",
+        tags=("tactics", "forcing moves", "workbook"),
+    ),
+    LessonSource(
+        lesson_id="rook-endings",
+        title="Comprehensive Chess Endings 5: Rook Endings",
+        author="Yuri Averbakh",
+        category="Endgames",
+        resource_type="Reference",
+        focus="Technical rook endings, conversion technique, and defensive resources.",
+        summary="A serious endgame reference for the most common practical endgame family in real tournament play.",
+        filename="Averbakh, Yuri - Comprehensive Chess Endings 5 - Rook Endings.pdf",
+        tags=("endgames", "rook endings", "technique"),
+    ),
+)
 
 
 class SilentGameBuilder(chess.pgn.GameBuilder):
@@ -162,6 +314,46 @@ def local_ip(host: str) -> str:
         return "127.0.0.1"
     finally:
         probe.close()
+
+
+def lesson_payload(include_local_paths: bool = False) -> dict[str, Any]:
+    lessons: list[dict[str, Any]] = []
+    for lesson in LESSON_LIBRARY:
+        file_path = resolve_lesson_file(lesson)
+        exists = file_path.exists()
+        size_mb = round(file_path.stat().st_size / (1024 * 1024), 2) if exists else None
+        entry = {
+            "id": lesson.lesson_id,
+            "title": lesson.title,
+            "author": lesson.author,
+            "category": lesson.category,
+            "resourceType": lesson.resource_type,
+            "focus": lesson.focus,
+            "summary": lesson.summary,
+            "sourceName": lesson.filename,
+            "tags": list(lesson.tags),
+            "availableLocally": exists,
+            "sizeMb": size_mb,
+            "fileUrl": f"/api/lessons/file/{lesson.lesson_id}" if include_local_paths and exists else None,
+        }
+        if include_local_paths and exists:
+            entry["localPath"] = str(file_path)
+        lessons.append(entry)
+
+    lessons.sort(key=lambda item: (item["category"].lower(), item["title"].lower()))
+    return {
+        "formatVersion": 1,
+        "builtAt": utc_timestamp(),
+        "lessons": lessons,
+    }
+
+
+def resolve_lesson_file(lesson: LessonSource) -> Path:
+    for root in (LOCAL_LESSONS_ROOT, DOWNLOADS_ROOT):
+        candidate = root / lesson.filename
+        if candidate.exists():
+            return candidate
+    return LOCAL_LESSONS_ROOT / lesson.filename
 
 
 def png_chunk(tag: bytes, payload: bytes) -> bytes:
@@ -340,6 +532,10 @@ class OpeningTrainerState:
     def _database_manifest_path(self, output_root: Path | None = None) -> Path:
         root = output_root or self.cache_root
         return root / "database.json"
+
+    def _lessons_manifest_path(self, output_root: Path | None = None) -> Path:
+        root = output_root or self.cache_root
+        return root / "lessons.json"
 
     def inputs_signature(self) -> str:
         digest = hashlib.sha256()
@@ -559,6 +755,13 @@ class OpeningTrainerState:
         payload.pop("root", None)
         return payload
 
+    def write_lessons_manifest(self, output_root: Path | None = None) -> dict[str, Any]:
+        payload = lesson_payload(include_local_paths=False)
+        path = self._lessons_manifest_path(output_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        return payload
+
     def build_static_library(
         self,
         force: bool = False,
@@ -572,6 +775,7 @@ class OpeningTrainerState:
                 ensure_icon_assets()
             manifest = self.load_existing_manifest(output_root)
             if manifest is not None:
+                self.write_lessons_manifest(output_root)
                 if verbose:
                     print("Opening database is already up to date. Reusing cached static data.")
                 return manifest
@@ -607,6 +811,7 @@ class OpeningTrainerState:
         manifest_text = json.dumps(manifest, separators=(",", ":"))
         manifest_path.write_text(manifest_text, encoding="utf-8")
         self._database_manifest_path(output_root).write_text(manifest_text, encoding="utf-8")
+        self.write_lessons_manifest(output_root)
         return manifest
 
 
@@ -819,6 +1024,21 @@ class StaticAppHandler(SimpleHTTPRequestHandler):
     def _engine_service(self) -> StockfishService | None:
         return getattr(self.server, "engine_service", None)
 
+    def _send_path(self, file_path: Path) -> None:
+        if not file_path.exists() or not file_path.is_file():
+            self.send_error(404, "Requested file was not found.")
+            return
+
+        content_type, _encoding = mimetypes.guess_type(file_path.name)
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(file_path.stat().st_size))
+        disposition = "attachment" if file_path.suffix.lower() == ".zip" else "inline"
+        self.send_header("Content-Disposition", f'{disposition}; filename="{file_path.name}"')
+        self.end_headers()
+        with file_path.open("rb") as stream:
+            shutil.copyfileobj(stream, self.wfile)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path in {"", "/"}:
@@ -832,6 +1052,15 @@ class StaticAppHandler(SimpleHTTPRequestHandler):
                 else {"available": False, "message": "No engine service is configured."}
             )
             return self._write_json(payload)
+        if parsed.path == "/api/lessons":
+            return self._write_json(lesson_payload(include_local_paths=True))
+        if parsed.path.startswith("/api/lessons/file/"):
+            lesson_id = parsed.path.rsplit("/", 1)[-1]
+            lesson = next((item for item in LESSON_LIBRARY if item.lesson_id == lesson_id), None)
+            if lesson is None:
+                self.send_error(404, "Unknown lesson.")
+                return
+            return self._send_path(resolve_lesson_file(lesson))
         self.path = parsed.path
         return super().do_GET()
 

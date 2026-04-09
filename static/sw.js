@@ -1,4 +1,4 @@
-const CACHE_NAME = "opening-trainer-v7";
+const CACHE_NAME = "opening-trainer-v8";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./data/library.json",
   "./data/database.json",
+  "./data/lessons.json",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
