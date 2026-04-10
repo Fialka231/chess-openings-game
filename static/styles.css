@@ -903,6 +903,11 @@ select {
   border-color: rgba(180, 94, 58, 0.42);
 }
 
+.lesson-item.matching {
+  border-color: rgba(67, 104, 73, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(67, 104, 73, 0.12);
+}
+
 .lesson-topline {
   display: flex;
   flex-wrap: wrap;
@@ -928,6 +933,11 @@ select {
   font-size: 1.02rem;
 }
 
+.lesson-context-card {
+  margin-bottom: 16px;
+  line-height: 1.55;
+}
+
 .lesson-detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 16px;
@@ -936,6 +946,74 @@ select {
 .lesson-copy {
   margin: 10px 0 0;
   line-height: 1.55;
+}
+
+.lesson-bullet-list,
+.resource-list,
+.support-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.lesson-bullet-list.empty,
+.resource-list.empty,
+.support-list.empty {
+  color: var(--muted);
+}
+
+.lesson-bullet {
+  margin: 0;
+  padding-left: 16px;
+  position: relative;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.lesson-bullet::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.65em;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(180, 94, 58, 0.58);
+}
+
+.resource-item,
+.support-item {
+  border-radius: 16px;
+  padding: 14px;
+  border: 1px solid rgba(93, 106, 91, 0.14);
+  background: rgba(255, 255, 255, 0.56);
+  text-decoration: none;
+  color: inherit;
+  display: grid;
+  gap: 4px;
+}
+
+.resource-item strong,
+.support-item strong {
+  color: var(--accent-dark);
+}
+
+.resource-item span,
+.support-item span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.resource-item p,
+.support-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.resource-item:hover,
+.support-item:hover {
+  border-color: rgba(180, 94, 58, 0.28);
 }
 
 .opening-list {

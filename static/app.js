@@ -163,9 +163,15 @@ const elements = {
   selectedLessonTitle: document.getElementById("selected-lesson-title"),
   selectedLessonMeta: document.getElementById("selected-lesson-meta"),
   selectedLessonSummary: document.getElementById("selected-lesson-summary"),
+  selectedLessonContext: document.getElementById("selected-lesson-context"),
   selectedLessonFocus: document.getElementById("selected-lesson-focus"),
   selectedLessonFormat: document.getElementById("selected-lesson-format"),
+  selectedLessonIdeas: document.getElementById("selected-lesson-ideas"),
+  selectedLessonPlan: document.getElementById("selected-lesson-plan"),
   selectedLessonTags: document.getElementById("selected-lesson-tags"),
+  selectedLessonResources: document.getElementById("selected-lesson-resources"),
+  selectedLessonOpenings: document.getElementById("selected-lesson-openings"),
+  selectedLessonBooks: document.getElementById("selected-lesson-books"),
   selectedLessonStatus: document.getElementById("selected-lesson-status"),
   lessonOpenLink: document.getElementById("lesson-open-link"),
   lessonPracticeLink: document.getElementById("lesson-practice-link"),
@@ -245,6 +251,65 @@ function lessonCategories() {
   return [...new Set(state.lessons.map((lesson) => lesson.category))].sort((a, b) =>
     a.localeCompare(b),
   );
+}
+
+function activeOpeningId() {
+  return state.session?.opening?.id || state.selectedOpeningId || null;
+}
+
+function activeOpeningName() {
+  return state.session?.opening?.name || currentOpeningSummary()?.name || null;
+}
+
+function lessonMatchesActiveOpening(lesson) {
+  const openingId = activeOpeningId();
+  return Boolean(openingId && lesson.matchedOpeningIds?.includes(openingId));
+}
+
+function lessonDisplayMetric(lesson) {
+  if (lesson.kind === "guide") {
+    return `${lesson.openingCount || 0} ${pluralize(lesson.openingCount || 0, "opening file")}`;
+  }
+  return lesson.availableLocally ? "available here" : "catalog only";
+}
+
+function sortedLessons(lessons) {
+  return [...lessons].sort((left, right) => {
+    const leftMatch = lessonMatchesActiveOpening(left) ? 1 : 0;
+    const rightMatch = lessonMatchesActiveOpening(right) ? 1 : 0;
+    if (leftMatch !== rightMatch) {
+      return rightMatch - leftMatch;
+    }
+    if ((left.kind || "book") !== (right.kind || "book")) {
+      return left.kind === "guide" ? -1 : 1;
+    }
+    if ((right.availableLocally ? 1 : 0) !== (left.availableLocally ? 1 : 0)) {
+      return (right.availableLocally ? 1 : 0) - (left.availableLocally ? 1 : 0);
+    }
+    if ((right.resourceCount || 0) !== (left.resourceCount || 0)) {
+      return (right.resourceCount || 0) - (left.resourceCount || 0);
+    }
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function focusBestLessonForCurrentOpening() {
+  const openingId = activeOpeningId();
+  const visible = sortedLessons(filteredLessons());
+  if (!visible.length) {
+    state.selectedLessonId = null;
+    return;
+  }
+  if (openingId) {
+    const match = visible.find((lesson) => lesson.matchedOpeningIds?.includes(openingId));
+    if (match) {
+      state.selectedLessonId = match.id;
+      return;
+    }
+  }
+  if (!visible.some((lesson) => lesson.id === state.selectedLessonId)) {
+    state.selectedLessonId = visible[0]?.id || null;
+  }
 }
 
 function setActiveView(view) {
@@ -1937,7 +2002,7 @@ function filteredOpenings() {
 
 function filteredLessons() {
   const query = state.lessonSearch.trim().toLowerCase();
-  return state.lessons.filter((lesson) => {
+  const lessons = state.lessons.filter((lesson) => {
     const matchesCategory =
       state.lessonCategoryFilter === "all" || lesson.category === state.lessonCategoryFilter;
     const matchesQuery =
@@ -1945,9 +2010,13 @@ function filteredLessons() {
       lesson.title.toLowerCase().includes(query) ||
       lesson.author.toLowerCase().includes(query) ||
       lesson.summary.toLowerCase().includes(query) ||
-      lesson.tags.some((tag) => tag.toLowerCase().includes(query));
+      lesson.focus.toLowerCase().includes(query) ||
+      lesson.tags.some((tag) => tag.toLowerCase().includes(query)) ||
+      (lesson.matchedOpeningNames || []).some((name) => name.toLowerCase().includes(query)) ||
+      (lesson.keyIdeas || []).some((idea) => idea.toLowerCase().includes(query));
     return matchesCategory && matchesQuery;
   });
+  return sortedLessons(lessons);
 }
 
 function renderLessonCategories() {
@@ -1966,10 +2035,7 @@ function renderLessonCategories() {
     button.textContent = category === "all" ? "All Lessons" : category;
     button.addEventListener("click", () => {
       state.lessonCategoryFilter = category;
-      const visible = filteredLessons();
-      if (!visible.some((lesson) => lesson.id === state.selectedLessonId)) {
-        state.selectedLessonId = visible[0]?.id || null;
-      }
+      focusBestLessonForCurrentOpening();
       renderAll();
     });
     elements.lessonCategoryFilters.appendChild(button);
@@ -2004,6 +2070,9 @@ function renderLessonsList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "lesson-item";
+    if (lessonMatchesActiveOpening(lesson)) {
+      button.classList.add("matching");
+    }
     if (lesson.id === state.selectedLessonId) {
       button.classList.add("active");
     }
@@ -2011,10 +2080,13 @@ function renderLessonsList() {
       state.selectedLessonId = lesson.id;
       renderAll();
     });
+    const statusText = lessonMatchesActiveOpening(lesson)
+      ? `best for ${activeOpeningName()}`
+      : lessonDisplayMetric(lesson);
     button.innerHTML = `
       <div class="lesson-topline">
         <span class="category-badge">${lesson.category}</span>
-        <span class="opening-size">${lesson.availableLocally ? "available here" : "catalog only"}</span>
+        <span class="opening-size">${statusText}</span>
       </div>
       <h4>${lesson.title}</h4>
       <p>${lesson.author}</p>
@@ -2029,9 +2101,15 @@ function renderSelectedLesson() {
     !elements.selectedLessonTitle ||
     !elements.selectedLessonMeta ||
     !elements.selectedLessonSummary ||
+    !elements.selectedLessonContext ||
     !elements.selectedLessonFocus ||
     !elements.selectedLessonFormat ||
+    !elements.selectedLessonIdeas ||
+    !elements.selectedLessonPlan ||
     !elements.selectedLessonTags ||
+    !elements.selectedLessonResources ||
+    !elements.selectedLessonOpenings ||
+    !elements.selectedLessonBooks ||
     !elements.selectedLessonStatus ||
     !elements.lessonOpenLink
   ) {
@@ -2042,20 +2120,37 @@ function renderSelectedLesson() {
   if (!lesson) {
     elements.selectedLessonTitle.textContent = "Choose a lesson";
     elements.selectedLessonMeta.textContent =
-      "Pick a lesson from the shelf to see what it covers and whether it can be opened locally.";
+      "Pick a guide or book from the shelf to see what it covers and how it connects to your repertoire.";
     elements.selectedLessonSummary.textContent =
       "Your study shelf will appear here after the lesson catalog loads.";
+    elements.selectedLessonContext.textContent =
+      "Select a guide to see its opening coverage, resource links, and supporting books.";
     elements.selectedLessonFocus.textContent = "Lesson focus will appear here.";
     elements.selectedLessonFormat.textContent = "Format details will appear here.";
+    elements.selectedLessonIdeas.className = "lesson-bullet-list empty";
+    elements.selectedLessonIdeas.textContent = "No lesson selected.";
+    elements.selectedLessonPlan.className = "lesson-bullet-list empty";
+    elements.selectedLessonPlan.textContent = "No lesson selected.";
     elements.selectedLessonTags.className = "chip-row empty";
     elements.selectedLessonTags.textContent = "No lesson selected.";
+    elements.selectedLessonResources.className = "resource-list empty";
+    elements.selectedLessonResources.textContent = "No resources available yet.";
+    elements.selectedLessonOpenings.className = "chip-row empty";
+    elements.selectedLessonOpenings.textContent = "No opening coverage yet.";
+    elements.selectedLessonBooks.className = "support-list empty";
+    elements.selectedLessonBooks.textContent = "No supporting books linked yet.";
     elements.selectedLessonStatus.className = "pill neutral";
     elements.selectedLessonStatus.textContent = "Waiting";
     elements.lessonOpenLink.href = "#";
     elements.lessonOpenLink.classList.add("disabled-link");
     elements.lessonOpenLink.setAttribute("aria-disabled", "true");
+    elements.lessonOpenLink.textContent = "Open Main Resource";
     return;
   }
+
+  const openingMatch = lessonMatchesActiveOpening(lesson);
+  const openingName = activeOpeningName();
+  const primaryResource = lesson.resources?.[0] || null;
 
   elements.selectedLessonTitle.textContent = lesson.title;
   elements.selectedLessonMeta.textContent =
@@ -2063,11 +2158,64 @@ function renderSelectedLesson() {
   elements.selectedLessonSummary.textContent = lesson.summary;
   elements.selectedLessonFocus.textContent = lesson.focus;
   elements.selectedLessonFormat.textContent =
-    `${lesson.resourceType}${lesson.sizeMb ? ` • ${lesson.sizeMb} MB` : ""}${lesson.availableLocally ? "" : " • add the file to the local Lessons folder or keep it in Downloads to open it here"}`;
-  elements.selectedLessonStatus.className = `pill ${lesson.availableLocally ? "turn-white" : "subtle"}`;
-  elements.selectedLessonStatus.textContent = lesson.availableLocally
-    ? "Openable Here"
-    : "Catalog Only";
+    lesson.kind === "guide"
+      ? `${lesson.resourceType} • ${lesson.openingCount || 0} ${pluralize(lesson.openingCount || 0, "opening file")} covered`
+      : `${lesson.resourceType}${lesson.sizeMb ? ` • ${lesson.sizeMb} MB` : ""}${lesson.availableLocally ? "" : " • keep this file in Lessons or Downloads to open it locally"}`;
+  elements.selectedLessonStatus.className = `pill ${
+    openingMatch ? "turn-black" : lesson.availableLocally ? "turn-white" : "subtle"
+  }`;
+  elements.selectedLessonStatus.textContent = openingMatch
+    ? "Matches Current Opening"
+    : lesson.availableLocally
+      ? "Openable Here"
+      : lesson.kind === "guide"
+        ? "Guide Ready"
+        : "Catalog Only";
+  elements.selectedLessonContext.textContent = openingMatch && openingName
+    ? `This lesson is the best current match for ${openingName}. Study the ideas first, then jump back into practice.`
+    : lesson.kind === "guide"
+      ? `This guide covers ${lesson.openingCount || 0} repertoire ${pluralize(
+          lesson.openingCount || 0,
+          "file",
+        )} and is meant to turn opening memory into strategic understanding.`
+      : lesson.availableLocally
+        ? "This file can be opened directly on this machine and used as a deeper reference after drilling."
+        : "This catalog item is still useful for planning your study, even when the local file is not available here.";
+
+  const ideaItems = lesson.keyIdeas || [];
+  elements.selectedLessonIdeas.innerHTML = "";
+  elements.selectedLessonIdeas.className = ideaItems.length
+    ? "lesson-bullet-list"
+    : "lesson-bullet-list empty";
+  if (ideaItems.length) {
+    for (const idea of ideaItems) {
+      const row = document.createElement("p");
+      row.className = "lesson-bullet";
+      row.textContent = idea;
+      elements.selectedLessonIdeas.appendChild(row);
+    }
+  } else {
+    elements.selectedLessonIdeas.textContent =
+      lesson.kind === "guide" ? "No ideas were listed for this guide yet." : "Use the summary and tags as your study cue.";
+  }
+
+  const planItems = lesson.studyPlan || [];
+  elements.selectedLessonPlan.innerHTML = "";
+  elements.selectedLessonPlan.className = planItems.length
+    ? "lesson-bullet-list"
+    : "lesson-bullet-list empty";
+  if (planItems.length) {
+    for (const step of planItems) {
+      const row = document.createElement("p");
+      row.className = "lesson-bullet";
+      row.textContent = step;
+      elements.selectedLessonPlan.appendChild(row);
+    }
+  } else {
+    elements.selectedLessonPlan.textContent =
+      lesson.kind === "guide" ? "No study path was listed for this guide yet." : "Open the book and pair it with your practice sessions.";
+  }
+
   elements.selectedLessonTags.innerHTML = "";
   elements.selectedLessonTags.className = lesson.tags.length ? "chip-row" : "chip-row empty";
   if (lesson.tags.length) {
@@ -2081,14 +2229,87 @@ function renderSelectedLesson() {
     elements.selectedLessonTags.textContent = "No lesson tags.";
   }
 
-  if (lesson.fileUrl) {
-    elements.lessonOpenLink.href = lesson.fileUrl;
+  elements.selectedLessonResources.innerHTML = "";
+  elements.selectedLessonResources.className = lesson.resources?.length
+    ? "resource-list"
+    : "resource-list empty";
+  if (lesson.resources?.length) {
+    for (const resource of lesson.resources) {
+      const item = document.createElement("a");
+      item.className = "resource-item";
+      item.href = resource.url;
+      item.target = "_blank";
+      item.rel = "noreferrer";
+      item.innerHTML = `
+        <strong>${resource.label}</strong>
+        <span>${resource.source}</span>
+        <p>${resource.description}</p>
+      `;
+      elements.selectedLessonResources.appendChild(item);
+    }
+  } else {
+    elements.selectedLessonResources.textContent =
+      lesson.kind === "guide"
+        ? "No linked resources were found for this guide."
+        : "This book is not openable here right now.";
+  }
+
+  elements.selectedLessonOpenings.innerHTML = "";
+  const openingSamples = lesson.matchedOpeningNames || [];
+  elements.selectedLessonOpenings.className = openingSamples.length ? "chip-row" : "chip-row empty";
+  if (openingSamples.length) {
+    for (const name of openingSamples.slice(0, 10)) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = name;
+      elements.selectedLessonOpenings.appendChild(chip);
+    }
+    if (openingSamples.length > 10) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = `+${openingSamples.length - 10} more`;
+      elements.selectedLessonOpenings.appendChild(chip);
+    }
+  } else {
+    elements.selectedLessonOpenings.textContent =
+      lesson.kind === "guide"
+        ? "No opening files are linked to this guide yet."
+        : "This is a general chess resource rather than an opening-specific guide.";
+  }
+
+  elements.selectedLessonBooks.innerHTML = "";
+  const relatedBooks = lesson.relatedBooks || [];
+  elements.selectedLessonBooks.className = relatedBooks.length ? "support-list" : "support-list empty";
+  if (relatedBooks.length) {
+    for (const book of relatedBooks) {
+      const link = document.createElement(book.fileUrl ? "a" : "div");
+      link.className = "support-item";
+      if (book.fileUrl) {
+        link.href = book.fileUrl;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+      }
+      link.innerHTML = `
+        <strong>${book.title}</strong>
+        <span>${book.author}</span>
+        <p>${book.resourceType}${book.availableLocally ? " • openable here" : ""}</p>
+      `;
+      elements.selectedLessonBooks.appendChild(link);
+    }
+  } else {
+    elements.selectedLessonBooks.textContent = "No supporting books linked yet.";
+  }
+
+  if (primaryResource) {
+    elements.lessonOpenLink.href = primaryResource.url;
     elements.lessonOpenLink.classList.remove("disabled-link");
     elements.lessonOpenLink.removeAttribute("aria-disabled");
+    elements.lessonOpenLink.textContent = primaryResource.label;
   } else {
     elements.lessonOpenLink.href = "#";
     elements.lessonOpenLink.classList.add("disabled-link");
     elements.lessonOpenLink.setAttribute("aria-disabled", "true");
+    elements.lessonOpenLink.textContent = lesson.fileUrl ? "Open Local File" : "Open Main Resource";
   }
 }
 
@@ -2393,9 +2614,7 @@ async function loadLessons() {
   try {
     const payload = await requestJsonWithFallback(LESSONS_URLS);
     state.lessons = payload.lessons || [];
-    if (!state.selectedLessonId || !state.lessons.some((lesson) => lesson.id === state.selectedLessonId)) {
-      state.selectedLessonId = state.lessons[0]?.id || null;
-    }
+    focusBestLessonForCurrentOpening();
   } catch (_error) {
     state.lessons = [];
     state.selectedLessonId = null;
@@ -2454,6 +2673,7 @@ async function selectOpening(openingId) {
   state.session = null;
   state.selectedBook = null;
   state.statusMessage = "Loading the selected opening from the database...";
+  focusBestLessonForCurrentOpening();
   renderAll();
 
   try {
@@ -2476,6 +2696,7 @@ async function selectOpening(openingId) {
     setEngineIdleState("Load an opening successfully before Stockfish can evaluate a position.");
   } finally {
     state.loadingBook = false;
+    focusBestLessonForCurrentOpening();
     renderAll();
   }
 }
@@ -2516,6 +2737,7 @@ async function startPractice() {
     } else {
       state.session = createLineSession(state.selectedBook, userColor, depth);
     }
+    focusBestLessonForCurrentOpening();
     state.feedbackTone = state.session.completed ? "complete" : "success";
     state.statusMessage = state.session.message;
   } catch (error) {
@@ -2700,10 +2922,7 @@ elements.searchInput.addEventListener("input", (event) => {
 if (elements.lessonSearchInput) {
   elements.lessonSearchInput.addEventListener("input", (event) => {
     state.lessonSearch = event.target.value;
-    const visible = filteredLessons();
-    if (!visible.some((lesson) => lesson.id === state.selectedLessonId)) {
-      state.selectedLessonId = visible[0]?.id || null;
-    }
+    focusBestLessonForCurrentOpening();
     renderAll();
   });
 }
@@ -2722,6 +2941,7 @@ if (elements.practiceNav) {
 
 if (elements.lessonsNav) {
   elements.lessonsNav.addEventListener("click", () => {
+    focusBestLessonForCurrentOpening();
     setActiveView("lessons");
   });
 }
@@ -2734,6 +2954,7 @@ if (elements.enterPractice) {
 
 if (elements.enterLessons) {
   elements.enterLessons.addEventListener("click", () => {
+    focusBestLessonForCurrentOpening();
     setActiveView("lessons");
   });
 }
@@ -2746,6 +2967,7 @@ if (elements.backHomePractice) {
 
 if (elements.openLessonsFromPractice) {
   elements.openLessonsFromPractice.addEventListener("click", () => {
+    focusBestLessonForCurrentOpening();
     setActiveView("lessons");
   });
 }
@@ -2763,7 +2985,11 @@ if (elements.openPracticeFromLessons) {
 }
 
 if (elements.lessonPracticeLink) {
-  elements.lessonPracticeLink.addEventListener("click", () => {
+  elements.lessonPracticeLink.addEventListener("click", async () => {
+    const lesson = currentLesson();
+    if (lesson?.practiceOpeningId && lesson.practiceOpeningId !== state.selectedOpeningId) {
+      await selectOpening(lesson.practiceOpeningId);
+    }
     setActiveView("practice");
   });
 }

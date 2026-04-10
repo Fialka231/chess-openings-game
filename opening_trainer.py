@@ -17,8 +17,8 @@ from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from itertools import chain
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlparse
+from typing import Any, Iterable
+from urllib.parse import quote, urlparse
 
 import chess
 import chess.engine
@@ -52,6 +52,30 @@ class LessonSource:
     summary: str
     filename: str
     tags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LessonLink:
+    label: str
+    url: str
+    source: str
+    description: str
+
+
+@dataclass(frozen=True)
+class OpeningGuideTemplate:
+    guide_id: str
+    title: str
+    focus: str
+    summary: str
+    match_prefixes: tuple[str, ...]
+    tags: tuple[str, ...]
+    key_ideas: tuple[str, ...]
+    study_plan: tuple[str, ...]
+    match_ids: tuple[str, ...] = ()
+    wikipedia_slug: str | None = None
+    lichess_topic: str | None = None
+    related_lesson_ids: tuple[str, ...] = ()
 
 
 LESSON_LIBRARY: tuple[LessonSource, ...] = (
@@ -189,6 +213,488 @@ LESSON_LIBRARY: tuple[LessonSource, ...] = (
     ),
 )
 
+DEFAULT_OPENING_REFERENCE_IDS = (
+    "chess-opening-essentials-vol-4",
+    "modern-chess-openings-15",
+    "logical-chess-move-by-move",
+)
+
+D4_REFERENCE_IDS = (
+    "attacking-with-1d4",
+    "chess-opening-essentials-vol-4",
+    "modern-chess-openings-15",
+)
+
+OPENING_GUIDES: tuple[OpeningGuideTemplate, ...] = (
+    OpeningGuideTemplate(
+        guide_id="guide-alekhine-defense",
+        title="Alekhine Defence Guide",
+        focus="Learn when White should chase the knight and when to consolidate the space edge with calm development.",
+        summary="Use this guide for the Alekhine files in your repertoire so you understand the central pawn chain, Black's counterplay against it, and the moments where development matters more than pawn grabbing.",
+        match_prefixes=("kingspawn-alekhine",),
+        tags=("openings", "alekhine", "space advantage", "counterplay"),
+        key_ideas=(
+            "Build the center without letting it become overextended.",
+            "Watch for ...d6 and ...c5 breaks that challenge White's pawn chain.",
+            "Compare quiet development lines with sharper pawn-chasing continuations.",
+        ),
+        study_plan=(
+            "Read the overview so the purpose of Black's knight provocation is clear.",
+            "Play through one community study and note how White stabilizes the center before attacking.",
+            "Return to the trainer and test the same family until the main central plans feel automatic.",
+        ),
+        wikipedia_slug="Alekhine%27s_Defence",
+        lichess_topic="Alekhine Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("improve-your-chess-now",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-caro-kann",
+        title="Caro-Kann Guide",
+        focus="Understand why the Caro-Kann is so solid, where Black's light-squared bishop belongs, and which pawn structures your lines lead to.",
+        summary="Your Caro-Kann files become much easier to remember once you connect each branch to its structure: Advance pressure, Exchange symmetry, Panov activity, or Classical development battles.",
+        match_prefixes=("kingspawn-caro-kann",),
+        tags=("openings", "caro-kann", "structures", "solid defense"),
+        key_ideas=(
+            "Track the battle between Black's c-pawn and White's center.",
+            "Notice when Black solves the light-squared bishop and when that is the whole point of White's setup.",
+            "Use the structure, not just the moves, to remember the correct plan.",
+        ),
+        study_plan=(
+            "Start with the overview article and identify which structure belongs to each of your repertoire files.",
+            "Use the Lichess studies to compare the Advance, Classical, Exchange, and Panov themes.",
+            "Drill one Caro-Kann branch in the app, then explain the resulting pawn structure in your own words.",
+        ),
+        wikipedia_slug="Caro-Kann_Defence",
+        lichess_topic="Caro-Kann Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("my-system",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-french-defense",
+        title="French Defence Guide",
+        focus="Study the blocked center, the c5 break, and the kingside-versus-queenside plans that make French positions memorable.",
+        summary="This guide ties together your French Advance, Exchange, Tarrasch, Winawer, Rubinstein, and side-line files so you can navigate the recurring pawn-chain ideas instead of memorizing isolated branches.",
+        match_prefixes=("kingspawn-fr", "kingspawn-french"),
+        tags=("openings", "french", "pawn chains", "counterattack"),
+        key_ideas=(
+            "The pawn chain e5-d4 versus e6-d5 tells you where both sides should play.",
+            "Black often seeks ...c5 and ...f6; White usually plays for space and kingside initiative.",
+            "Different French branches mainly change how quickly those strategic clashes arrive.",
+        ),
+        study_plan=(
+            "Read the overview and write down the standard pawn breaks for both sides.",
+            "Use the study collection to compare Advance, Tarrasch, Winawer, and Rubinstein plans.",
+            "Train one French line in the app and stop after each game to name the key pawn breaks aloud.",
+        ),
+        wikipedia_slug="French_Defence",
+        lichess_topic="French Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("my-system", "improve-your-chess-now"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-modern-defense",
+        title="Modern Defence Guide",
+        focus="Learn the hypermodern idea of allowing the center first and attacking it later with flexible piece play.",
+        summary="Your Modern Defence files work best when you see them as flexible counterplay systems: Black delays direct central contact, fianchettos, and then chooses the right break against White's center.",
+        match_prefixes=("kingspawn-modern",),
+        tags=("openings", "modern defense", "hypermodern", "counterplay"),
+        key_ideas=(
+            "Black invites White to occupy the center and then undermines it.",
+            "The dark-squared bishop and pawn breaks define the opening far more than early forcing tactics.",
+            "Move-order awareness matters because the Modern can transpose into Pirc-like setups or independent play.",
+        ),
+        study_plan=(
+            "Read the overview so the hypermodern logic behind the opening is clear.",
+            "Use the study collection to compare the main central setups White can choose.",
+            "Return to the trainer and practice recognizing which Black break fits each structure.",
+        ),
+        wikipedia_slug="Modern_Defence",
+        lichess_topic="Modern Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("my-system",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-pirc-defense",
+        title="Pirc Defence Guide",
+        focus="Study the Pirc as a dynamic kingside-fianchetto defense where timing and piece harmony matter more than grabbing space quickly.",
+        summary="This guide complements your Pirc files by connecting the Austrian-style attacking ideas for White with Black's central breaks and piece pressure against the extended center.",
+        match_prefixes=("kingspawn-pirc",),
+        tags=("openings", "pirc", "hypermodern", "piece play"),
+        key_ideas=(
+            "White usually claims space first; Black strikes when the setup is ready.",
+            "Watch the timing of ...e5 or ...c5 and how they change the character of the game.",
+            "The Pirc rewards understanding development schemes more than memorizing one forcing line.",
+        ),
+        study_plan=(
+            "Read the overview to fix the main plans for both sides in memory.",
+            "Browse a study collection and focus on how the center is challenged, not only on the moves.",
+            "Test the Pirc files in practice and review any position where the central break felt unclear.",
+        ),
+        wikipedia_slug="Pirc_Defence",
+        lichess_topic="Pirc Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("improve-your-chess-now",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-scandinavian-defense",
+        title="Scandinavian Defence Guide",
+        focus="See the Scandinavian as an early central confrontation where development and queen placement dictate the middlegame.",
+        summary="Your Scandinavian files make more sense when you compare the queen recapture choices, White's development targets, and Black's plan to finish development without losing time.",
+        match_prefixes=("kingspawn-scand",),
+        tags=("openings", "scandinavian", "development", "queen activity"),
+        key_ideas=(
+            "Black solves the e-pawn problem immediately but must justify the queen activity.",
+            "White often aims for rapid development and pressure on the centralized queen.",
+            "Many lines are decided by who uses the early tempi more efficiently.",
+        ),
+        study_plan=(
+            "Use the overview to compare the main queen setups and why each exists.",
+            "Review a study collection and note how Black completes development after the queen moves.",
+            "Practice your Scandinavian branches and check whether you remember the development targets, not only the move order.",
+        ),
+        wikipedia_slug="Scandinavian_Defense",
+        lichess_topic="Scandinavian Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("logical-chess-move-by-move",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-sicilian-defense",
+        title="Sicilian Defence Guide",
+        focus="Learn the Sicilian by recurring themes: uneven pawn structures, active piece play, and the race between opposite-side plans.",
+        summary="This guide supports your large Sicilian repertoire by grouping together the Open Sicilian, Alapin, Closed, Dragon, Najdorf, Taimanov, Kan, Moscow, and anti-Sicilian branches around their common structural ideas.",
+        match_prefixes=("kingspawn-sic",),
+        tags=("openings", "sicilian", "imbalances", "counterplay"),
+        key_ideas=(
+            "The Sicilian is about imbalance: Black accepts some space loss to gain dynamic counterplay.",
+            "Typical pawn structures matter more than exact move orders when you are building understanding.",
+            "Different Sicilian branches usually change where the attack and counterplay land, not whether imbalance exists.",
+        ),
+        study_plan=(
+            "Read the overview and map your files into Open Sicilian, anti-Sicilian, and closed-system groups.",
+            "Use the studies to compare Dragon, Najdorf, Taimanov, Kan, and anti-Sicilian ideas.",
+            "Practice one Sicilian family at a time and review how each side's pawn breaks define the middlegame.",
+        ),
+        wikipedia_slug="Sicilian_Defence",
+        lichess_topic="Sicilian Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("improve-your-chess-now", "1000-mate-in-2"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-nimzowitsch-defense",
+        title="Nimzowitsch Defence Guide",
+        focus="Use this guide for the early ...Nc6 systems so you understand the provocative setup and the central fight it invites.",
+        summary="Your Nimzo Defense file in the King's Pawn folder is really a Nimzowitsch-style defense to 1.e4, so this guide focuses on why Black develops the queen's knight early and how White should respond cleanly.",
+        match_prefixes=("kingspawn-nimzodefense",),
+        tags=("openings", "nimzowitsch defense", "provocative setup", "center"),
+        key_ideas=(
+            "Black develops unusually early with ...Nc6 and asks White to prove the center can be maintained.",
+            "White usually benefits from principled development and central space instead of overreacting.",
+            "You remember these lines better when you see them as a challenge to classical opening priorities.",
+        ),
+        study_plan=(
+            "Read the overview and note the strategic point behind Black's early knight move.",
+            "Use the study collection to compare sensible White setups against Black's offbeat move order.",
+            "Practice the file in the trainer and focus on why each developing move matters.",
+        ),
+        wikipedia_slug="Nimzowitsch_Defence",
+        lichess_topic="Nimzowitsch Defense",
+        related_lesson_ids=DEFAULT_OPENING_REFERENCE_IDS + ("logical-chess-move-by-move",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-benko-gambit",
+        title="Benko Gambit Guide",
+        focus="Study the long-term queenside pressure and piece activity that justify Black's pawn sacrifice.",
+        summary="This guide helps you understand why the Benko is playable at all: Black gives material for files, diagonals, and enduring pressure, so memory improves when you track compensation rather than just tactics.",
+        match_prefixes=("queenspawn-benkogambit",),
+        tags=("openings", "benko gambit", "queenside pressure", "initiative"),
+        key_ideas=(
+            "Black sacrifices a pawn for open lines and long-term piece activity.",
+            "White must choose between holding material and neutralizing pressure efficiently.",
+            "The resulting middlegames are often easier to play when you understand the strategic compensation.",
+        ),
+        study_plan=(
+            "Read the overview to understand Black's compensation before looking at concrete lines.",
+            "Browse study examples and notice how rooks and bishops use the open queenside files and diagonals.",
+            "Practice the Benko file in the app and review whether you can explain the compensation after each session.",
+        ),
+        wikipedia_slug="Benko_Gambit",
+        lichess_topic="Benko Gambit",
+        related_lesson_ids=D4_REFERENCE_IDS + ("improve-your-chess-now",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-black-knights-tango",
+        title="Black Knights' Tango Guide",
+        focus="Use this guide to make sense of the unusual double-knight setup and the transpositional tricks it invites.",
+        summary="The Black Knights' Tango is offbeat but not random. This guide helps you see when Black is aiming for independent play and when the opening is really a path into more familiar Indian-defense structures.",
+        match_prefixes=("queenspawn-blackknighttango",),
+        tags=("openings", "black knights tango", "offbeat openings", "transpositions"),
+        key_ideas=(
+            "Black develops both knights early to challenge the center and create flexible transpositions.",
+            "White is usually best served by principled development rather than trying to punish the setup immediately.",
+            "Understanding likely transpositions is more valuable here than memorizing one fixed branch.",
+        ),
+        study_plan=(
+            "Start with the overview so the opening's strategic idea feels logical, not random.",
+            "Use the study collection to compare independent Tango positions with Indian-defense transpositions.",
+            "Practice the file and note where your repertoire stays independent versus when it becomes a known structure.",
+        ),
+        wikipedia_slug="Black_Knights%27_Tango",
+        lichess_topic="Black Knights Tango",
+        related_lesson_ids=D4_REFERENCE_IDS + ("logical-chess-move-by-move",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-bogo-indian-defense",
+        title="Bogo-Indian Defence Guide",
+        focus="Learn the Bogo-Indian as a flexible d4 system built on piece pressure, sound development, and restrained central tension.",
+        summary="This guide helps you treat your Bogo lines as understanding-based positions: Black uses the bishop pin and compact structure to fight for dark squares and healthy development rather than immediate tactical fireworks.",
+        match_prefixes=("queenspawn-bogo",),
+        tags=("openings", "bogo-indian", "piece pressure", "dark squares"),
+        key_ideas=(
+            "The bishop check and compact development aim for solidity plus targeted pressure.",
+            "Bogo positions reward patience and good piece placement more than forcing calculation from move one.",
+            "Dark-square control and smooth development often matter more than memorizing one exact branch.",
+        ),
+        study_plan=(
+            "Read the overview and identify Black's main strategic goals after the bishop check.",
+            "Use the studies to compare the common White setups and how Black reacts.",
+            "Practice the Bogo files and explain which squares or structure each move is trying to influence.",
+        ),
+        wikipedia_slug="Bogo-Indian_Defence",
+        lichess_topic="Bogo-Indian Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-catalan-opening",
+        title="Catalan Guide",
+        focus="Study the Catalan through the long diagonal, queenside pressure, and the tension between extra pawns and long-term activity.",
+        summary="Your Catalan files become easier to learn once you stop seeing them as pure theory and start seeing them as a strategic battle over the g2 bishop, queenside development, and central tension.",
+        match_prefixes=("queenspawn-catalan",),
+        tags=("openings", "catalan", "long diagonal", "strategic pressure"),
+        key_ideas=(
+            "The g2 bishop is the soul of many Catalan positions.",
+            "Black often decides between holding material and completing development smoothly.",
+            "White's activity can outweigh short-term material considerations.",
+        ),
+        study_plan=(
+            "Read the overview and focus on why the g2 bishop shapes the whole opening.",
+            "Use the study collection to compare closed structures with more open Catalan play.",
+            "Practice the Catalan files and review which position types make the bishop strongest.",
+        ),
+        wikipedia_slug="Catalan_Opening",
+        lichess_topic="Catalan Opening",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system", "logical-chess-move-by-move"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-benoni-family",
+        title="Benoni Family Guide",
+        focus="Use this guide for the Czech, Modern, and Semi-Benoni files by focusing on space imbalance, queenside pressure, and central breaks.",
+        summary="The Benoni family rewards strategic understanding because Black accepts space disadvantage to gain dynamic counterplay. This guide unifies your Benoni branches around the recurring pawn structures and attacking zones.",
+        match_prefixes=(
+            "queenspawn-czechbenoni",
+            "queenspawn-modernbenoni",
+            "queenspawn-semibenoni",
+        ),
+        tags=("openings", "benoni", "space imbalance", "counterplay"),
+        key_ideas=(
+            "White usually has more space; Black seeks active piece play and timely pawn breaks.",
+            "The central and queenside pawn structure often tells you where both sides should play.",
+            "Different Benoni branches mostly change the route to the familiar imbalanced middlegame.",
+        ),
+        study_plan=(
+            "Read the overview and identify the typical space-versus-activity tradeoff.",
+            "Compare Czech, Modern, and Semi-Benoni study examples to see how the same strategic themes recur.",
+            "Drill one Benoni branch in the app and review whether you recognized the correct pawn break plans.",
+        ),
+        wikipedia_slug="Benoni_Defence",
+        lichess_topic="Benoni Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("improve-your-chess-now",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-dutch-defense",
+        title="Dutch Defence Guide",
+        focus="Learn the Dutch as a fight for e4, kingside initiative, and structural risk balanced by active play.",
+        summary="This guide covers your Dutch files by linking the Classical, Leningrad, and side-line setups to the same strategic questions: when to push for kingside play, when to stabilize the center, and how to handle weak squares.",
+        match_prefixes=("queenspawn-dutch",),
+        tags=("openings", "dutch", "kingside play", "strategic risk"),
+        key_ideas=(
+            "Black plays for active control of e4 and often for kingside initiative.",
+            "The Dutch creates dynamic chances but also long-term structural weaknesses.",
+            "Knowing where Black's king belongs and which pawn breaks are safe is crucial.",
+        ),
+        study_plan=(
+            "Read the overview and note the tradeoff between activity and structural looseness.",
+            "Study the main Dutch setups to compare Classical and Leningrad plans.",
+            "Practice the Dutch files and review whether your move choices matched the intended kingside or central plan.",
+        ),
+        wikipedia_slug="Dutch_Defence",
+        lichess_topic="Dutch Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system", "improve-your-chess-now"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-grunfeld-defense",
+        title="Grunfeld Defence Guide",
+        focus="Study the Grunfeld as a hypermodern center fight where Black invites space and attacks it with exact piece pressure.",
+        summary="Your Grunfeld files fit together once you understand the main bargain: White gets a broad center, Black targets it with rapid development, pressure, and timely pawn breaks.",
+        match_prefixes=("queenspawn-grunfeld",),
+        tags=("openings", "grunfeld", "center pressure", "hypermodern"),
+        key_ideas=(
+            "Black attacks White's center instead of mirroring it.",
+            "Piece activity and central tension matter more than static symmetry.",
+            "The opening rewards understanding how White's center can become either strength or target.",
+        ),
+        study_plan=(
+            "Read the overview to internalize Black's strategic reason for allowing the big center.",
+            "Use the study collection to compare Exchange, Fianchetto, and side-line structures.",
+            "Practice the Grunfeld files and review whether you recognized the moments to challenge the center.",
+        ),
+        wikipedia_slug="Gr%C3%BCnfeld_Defence",
+        lichess_topic="Grunfeld Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("modern-chess-openings-15", "improve-your-chess-now"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-kings-indian-defense",
+        title="King's Indian Defence Guide",
+        focus="Learn the King's Indian through its recurring pawn storms, central tension, and race-of-attacks middlegames.",
+        summary="This guide brings your KID files together by focusing on the structures and plans that repeat across the Classical, Fianchetto, Saemisch, Petrosian, Averbakh, and Four Pawns systems.",
+        match_prefixes=("queenspawn-kid",),
+        tags=("openings", "king's indian", "pawn storms", "attacking play"),
+        key_ideas=(
+            "Black often allows central space in exchange for dynamic kingside chances.",
+            "The opening is remembered best through structures and attacking patterns, not isolated move lists.",
+            "Different White setups mainly change the route to the middlegame battle.",
+        ),
+        study_plan=(
+            "Read the overview and identify the typical attacking setup Black is aiming for.",
+            "Use the studies to compare the Classical, Fianchetto, Saemisch, and Four Pawns themes.",
+            "Practice the KID files and review how the pawn structure tells you where each side should attack.",
+        ),
+        wikipedia_slug="King%27s_Indian_Defence",
+        lichess_topic="King's Indian Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system", "improve-your-chess-now"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-london-system",
+        title="London System Guide",
+        focus="See the London as a flexible development scheme where understanding plans and pawn breaks matters more than memorizing move order tricks.",
+        summary="Your London files become more useful when you connect them to their middlegame plans: quick development, healthy structure, kingside attacking ideas, and pragmatic responses to Black's setup choices.",
+        match_prefixes=("queenspawn-london",),
+        tags=("openings", "london system", "system opening", "practical play"),
+        key_ideas=(
+            "The London is a setup-based opening, but the setup only works when you know the plans behind it.",
+            "Black's formation should influence whether White plays quietly, expands, or attacks.",
+            "Studying model games is especially valuable because the plans repeat so often.",
+        ),
+        study_plan=(
+            "Read the overview to understand the standard London setup and its strategic aims.",
+            "Use the studies to compare the main responses Black chooses against your system.",
+            "Practice the London files and review which plan each Black setup should trigger.",
+        ),
+        wikipedia_slug="London_System",
+        lichess_topic="London System",
+        related_lesson_ids=D4_REFERENCE_IDS + ("attacking-with-1d4", "logical-chess-move-by-move"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-nimzo-indian-defense",
+        title="Nimzo-Indian Defence Guide",
+        focus="Study the Nimzo-Indian through control of e4, structural concessions, and the balance between bishop pair and pawn weaknesses.",
+        summary="This guide covers your Nimzo files by tying together the Classical, Rubinstein, Saemisch, and 4.Nf3 branches through the recurring strategic themes that define the opening.",
+        match_prefixes=("queenspawn-nimzo",),
+        tags=("openings", "nimzo-indian", "dark squares", "structure"),
+        key_ideas=(
+            "Black fights for e4 and often accepts structural imbalance to gain activity.",
+            "White frequently chooses between bishop pair value and structural health.",
+            "The opening is rich strategically, so explanations matter more than rote memorization.",
+        ),
+        study_plan=(
+            "Read the overview and note why Black is happy to give up the bishop pair in many lines.",
+            "Use the studies to compare the Classical, Rubinstein, and Saemisch setups.",
+            "Practice the Nimzo files and review which structural change each move is aiming to create or prevent.",
+        ),
+        wikipedia_slug="Nimzo-Indian_Defence",
+        lichess_topic="Nimzo-Indian Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system", "improve-your-chess-now"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-old-indian-defense",
+        title="Old Indian Defence Guide",
+        focus="Use this guide to understand the Old Indian as a more restrained cousin of the King's Indian with sturdy structure and patient development.",
+        summary="Your Old Indian file is best learned by comparing it to more dynamic Indian defenses. This guide emphasizes the compact setup, central control, and slower buildup that define the opening.",
+        match_prefixes=("queenspawn-oldindian",),
+        tags=("openings", "old indian", "solid structure", "patient development"),
+        key_ideas=(
+            "Black develops solidly first and seeks healthy structure before active operations.",
+            "The opening is calmer than the King's Indian but still requires accurate timing of central breaks.",
+            "Small structural details matter because the positions are less tactical from the start.",
+        ),
+        study_plan=(
+            "Read the overview to understand how the Old Indian differs from the King's Indian.",
+            "Study a few examples and focus on piece placement and central tension rather than tactical tricks.",
+            "Practice the file and review whether you can explain Black's setup without relying on move-order memory alone.",
+        ),
+        wikipedia_slug="Old_Indian_Defense",
+        lichess_topic="Old Indian Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system",),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-queens-indian-defense",
+        title="Queen's Indian Defence Guide",
+        focus="Learn the Queen's Indian through harmonious development, queenside pressure, and positional control of key central squares.",
+        summary="Your QID files are especially understanding-driven. This guide shows how Black uses piece activity, bishop pressure, and flexible pawn structure to create long-term positional play rather than quick tactics.",
+        match_prefixes=("queenspawn-qid",),
+        tags=("openings", "queen's indian", "positional play", "piece pressure"),
+        key_ideas=(
+            "Black aims for smooth development and lasting pressure on light squares and the center.",
+            "Many Queen's Indian positions are decided by maneuvering quality rather than opening traps.",
+            "Model games are especially useful because the same pieces often improve in the same way.",
+        ),
+        study_plan=(
+            "Read the overview and identify the squares Black is usually trying to control.",
+            "Use the studies to compare the main White setups and Black's corresponding plans.",
+            "Practice the QID files and review which piece-improvement plan the resulting structure calls for.",
+        ),
+        wikipedia_slug="Queen%27s_Indian_Defense",
+        lichess_topic="Queen's Indian Defense",
+        related_lesson_ids=D4_REFERENCE_IDS + ("my-system", "logical-chess-move-by-move"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-torre-trompowsky",
+        title="Torre And Trompowsky Guide",
+        focus="Use this guide for early bishop systems where White sidesteps heavy theory and aims for practical, plan-based play.",
+        summary="Your Torre and Trompowsky files are easier to remember once you view them as practical bishop systems built around piece placement, structure, and whether White should keep or exchange the bishop pair.",
+        match_prefixes=("queenspawn-torre", "queenspawn-trompowsky"),
+        tags=("openings", "torre attack", "trompowsky", "practical systems"),
+        key_ideas=(
+            "White often chooses these systems to reduce theory and reach familiar structures quickly.",
+            "The early bishop move is only strong if you understand when to keep the bishop and when to trade it.",
+            "Practical middlegame plans matter more than encyclopedic move coverage here.",
+        ),
+        study_plan=(
+            "Read the overview and note the strategic reason behind White's early bishop development.",
+            "Use the studies to compare Torre and Trompowsky move-order ideas and bishop decisions.",
+            "Practice these files and review whether you recognized when to exchange or preserve the bishop.",
+        ),
+        wikipedia_slug="Trompowsky_Attack",
+        lichess_topic="Trompowsky Attack",
+        related_lesson_ids=D4_REFERENCE_IDS + ("attacking-with-1d4", "logical-chess-move-by-move"),
+    ),
+    OpeningGuideTemplate(
+        guide_id="guide-flexible-d4-systems",
+        title="Flexible Queen's Pawn Systems Guide",
+        focus="Study the flexible 1.d4 files as a practical bridge between pure system openings and fully theoretical Indian-defense structures.",
+        summary="This guide covers the broader Queen's Pawn and flexible d4 files in your database, including the Modern and Nakamura-labeled branches, so you can understand what structure and transposition each setup is steering toward.",
+        match_prefixes=("queenspawn-nakamura",),
+        match_ids=("queenspawn-modern",),
+        tags=("openings", "queen's pawn game", "flexible systems", "transpositions"),
+        key_ideas=(
+            "These setups are defined by flexibility and transposition potential.",
+            "Understanding which structures you are inviting matters more than memorizing one label.",
+            "The same opening move can lead to very different middlegames depending on Black's setup.",
+        ),
+        study_plan=(
+            "Read the overview to frame these lines as flexible d4 systems rather than isolated one-off openings.",
+            "Use the studies to see which common structures the move orders are heading toward.",
+            "Practice the files and review whether you recognized the intended transposition or structure in time.",
+        ),
+        wikipedia_slug="Queen%27s_Pawn_Game",
+        lichess_topic="Queen's Pawn Game",
+        related_lesson_ids=D4_REFERENCE_IDS + ("attacking-with-1d4", "my-system"),
+    ),
+)
+
 
 class SilentGameBuilder(chess.pgn.GameBuilder):
     def handle_error(self, error: Exception) -> None:
@@ -316,33 +822,219 @@ def local_ip(host: str) -> str:
         probe.close()
 
 
-def lesson_payload(include_local_paths: bool = False) -> dict[str, Any]:
-    lessons: list[dict[str, Any]] = []
-    for lesson in LESSON_LIBRARY:
-        file_path = resolve_lesson_file(lesson)
-        exists = file_path.exists()
-        size_mb = round(file_path.stat().st_size / (1024 * 1024), 2) if exists else None
-        entry = {
-            "id": lesson.lesson_id,
-            "title": lesson.title,
-            "author": lesson.author,
-            "category": lesson.category,
-            "resourceType": lesson.resource_type,
-            "focus": lesson.focus,
-            "summary": lesson.summary,
-            "sourceName": lesson.filename,
-            "tags": list(lesson.tags),
-            "availableLocally": exists,
-            "sizeMb": size_mb,
-            "fileUrl": f"/api/lessons/file/{lesson.lesson_id}" if include_local_paths and exists else None,
-        }
-        if include_local_paths and exists:
-            entry["localPath"] = str(file_path)
-        lessons.append(entry)
+def wikipedia_url(slug: str) -> str:
+    return f"https://en.wikipedia.org/wiki/{slug}"
 
-    lessons.sort(key=lambda item: (item["category"].lower(), item["title"].lower()))
+
+def lichess_topic_url(topic: str) -> str:
+    return f"https://lichess.org/study/topic/{quote(topic)}/popular"
+
+
+def lesson_book_entry(lesson: LessonSource, include_local_paths: bool = False) -> dict[str, Any]:
+    file_path = resolve_lesson_file(lesson)
+    exists = file_path.exists()
+    size_mb = round(file_path.stat().st_size / (1024 * 1024), 2) if exists else None
+    file_url = f"/api/lessons/file/{lesson.lesson_id}" if include_local_paths and exists else None
+    resources = []
+    if file_url:
+        resources.append(
+            {
+                "label": "Open local file",
+                "url": file_url,
+                "source": "Local lesson library",
+                "description": "Open this file directly from the machine running the trainer.",
+            }
+        )
+    entry = {
+        "id": lesson.lesson_id,
+        "kind": "book",
+        "title": lesson.title,
+        "author": lesson.author,
+        "category": lesson.category,
+        "resourceType": lesson.resource_type,
+        "focus": lesson.focus,
+        "summary": lesson.summary,
+        "sourceName": lesson.filename,
+        "tags": list(lesson.tags),
+        "availableLocally": exists,
+        "sizeMb": size_mb,
+        "fileUrl": file_url,
+        "resources": resources,
+        "resourceCount": len(resources),
+        "keyIdeas": [],
+        "studyPlan": [],
+        "matchedOpeningIds": [],
+        "matchedOpeningNames": [],
+        "openingCount": 0,
+        "practiceOpeningId": None,
+        "relatedBooks": [],
+        "sortGroup": 1,
+    }
+    if include_local_paths and exists:
+        entry["localPath"] = str(file_path)
+    return entry
+
+
+def opening_source_blob(source: OpeningSource) -> str:
+    return " ".join(
+        (
+            source.opening_id,
+            source.display_name,
+            source.filename,
+            source.relative_path,
+            source.category,
+        )
+    ).lower()
+
+
+def matching_sources_for_guide(
+    template: OpeningGuideTemplate,
+    sources: Iterable[OpeningSource],
+) -> list[OpeningSource]:
+    matches = []
+    for source in sources:
+        blob = opening_source_blob(source)
+        if source.opening_id in template.match_ids:
+            matches.append(source)
+            continue
+        if any(source.opening_id.startswith(prefix) for prefix in template.match_prefixes):
+            matches.append(source)
+            continue
+        if any(prefix in blob for prefix in template.match_prefixes):
+            matches.append(source)
+    matches.sort(key=lambda item: (item.category.lower(), item.display_name.lower()))
+    return matches
+
+
+def related_book_entries(
+    lesson_ids: Iterable[str],
+    include_local_paths: bool = False,
+) -> list[dict[str, Any]]:
+    library = {lesson.lesson_id: lesson for lesson in LESSON_LIBRARY}
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for lesson_id in lesson_ids:
+        if lesson_id in seen:
+            continue
+        seen.add(lesson_id)
+        lesson = library.get(lesson_id)
+        if lesson is None:
+            continue
+        entry = lesson_book_entry(lesson, include_local_paths=include_local_paths)
+        entries.append(
+            {
+                "id": entry["id"],
+                "title": entry["title"],
+                "author": entry["author"],
+                "resourceType": entry["resourceType"],
+                "availableLocally": entry["availableLocally"],
+                "fileUrl": entry["fileUrl"],
+            }
+        )
+    return entries
+
+
+def guide_resource_entries(template: OpeningGuideTemplate) -> list[dict[str, str]]:
+    resources: list[LessonLink] = []
+    if template.wikipedia_slug:
+        resources.append(
+            LessonLink(
+                label="Opening overview",
+                url=wikipedia_url(template.wikipedia_slug),
+                source="Wikipedia",
+                description="Read a compact overview of the opening, its ideas, and major branches.",
+            )
+        )
+    if template.lichess_topic:
+        resources.append(
+            LessonLink(
+                label="Study collection",
+                url=lichess_topic_url(template.lichess_topic),
+                source="Lichess Studies",
+                description="Browse community studies, sample chapters, and guided lines for this opening family.",
+            )
+        )
+    return [
+        {
+            "label": resource.label,
+            "url": resource.url,
+            "source": resource.source,
+            "description": resource.description,
+        }
+        for resource in resources
+    ]
+
+
+def opening_guide_entry(
+    template: OpeningGuideTemplate,
+    sources: Iterable[OpeningSource],
+    include_local_paths: bool = False,
+) -> dict[str, Any] | None:
+    matches = matching_sources_for_guide(template, sources)
+    if not matches:
+        return None
+
+    resources = guide_resource_entries(template)
+    opening_names = [source.display_name for source in matches]
+    practice_opening_id = matches[0].opening_id if matches else None
     return {
-        "formatVersion": 1,
+        "id": template.guide_id,
+        "kind": "guide",
+        "title": template.title,
+        "author": "Opening Trainer guide",
+        "category": "Opening Guides",
+        "resourceType": "Guide Pack",
+        "focus": template.focus,
+        "summary": template.summary,
+        "sourceName": f"{len(matches)} repertoire file{'s' if len(matches) != 1 else ''}",
+        "tags": list(template.tags),
+        "availableLocally": False,
+        "sizeMb": None,
+        "fileUrl": None,
+        "resources": resources,
+        "resourceCount": len(resources),
+        "keyIdeas": list(template.key_ideas),
+        "studyPlan": list(template.study_plan),
+        "matchedOpeningIds": [source.opening_id for source in matches],
+        "matchedOpeningNames": opening_names,
+        "openingCount": len(matches),
+        "practiceOpeningId": practice_opening_id,
+        "relatedBooks": related_book_entries(
+            template.related_lesson_ids,
+            include_local_paths=include_local_paths,
+        ),
+        "sortGroup": 0,
+    }
+
+
+def lesson_payload(
+    sources: Iterable[OpeningSource],
+    include_local_paths: bool = False,
+) -> dict[str, Any]:
+    lessons = [
+        lesson_book_entry(lesson, include_local_paths=include_local_paths)
+        for lesson in LESSON_LIBRARY
+    ]
+    for template in OPENING_GUIDES:
+        entry = opening_guide_entry(
+            template,
+            sources,
+            include_local_paths=include_local_paths,
+        )
+        if entry is not None:
+            lessons.append(entry)
+
+    lessons.sort(
+        key=lambda item: (
+            item["sortGroup"],
+            item["category"].lower(),
+            item["title"].lower(),
+        )
+    )
+    for lesson in lessons:
+        lesson.pop("sortGroup", None)
+    return {
+        "formatVersion": 2,
         "builtAt": utc_timestamp(),
         "lessons": lessons,
     }
@@ -755,8 +1447,16 @@ class OpeningTrainerState:
         payload.pop("root", None)
         return payload
 
-    def write_lessons_manifest(self, output_root: Path | None = None) -> dict[str, Any]:
-        payload = lesson_payload(include_local_paths=False)
+    def write_lessons_manifest(
+        self,
+        output_root: Path | None = None,
+        sources: Iterable[OpeningSource] | None = None,
+    ) -> dict[str, Any]:
+        selected_sources = list(self.sources.values()) if sources is None else list(sources)
+        payload = lesson_payload(
+            selected_sources,
+            include_local_paths=False,
+        )
         path = self._lessons_manifest_path(output_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
@@ -775,7 +1475,7 @@ class OpeningTrainerState:
                 ensure_icon_assets()
             manifest = self.load_existing_manifest(output_root)
             if manifest is not None:
-                self.write_lessons_manifest(output_root)
+                self.write_lessons_manifest(output_root, self.sources.values())
                 if verbose:
                     print("Opening database is already up to date. Reusing cached static data.")
                 return manifest
@@ -811,7 +1511,7 @@ class OpeningTrainerState:
         manifest_text = json.dumps(manifest, separators=(",", ":"))
         manifest_path.write_text(manifest_text, encoding="utf-8")
         self._database_manifest_path(output_root).write_text(manifest_text, encoding="utf-8")
-        self.write_lessons_manifest(output_root)
+        self.write_lessons_manifest(output_root, selected_sources)
         return manifest
 
 
@@ -998,9 +1698,11 @@ class OpeningTrainerServer(ThreadingHTTPServer):
         self,
         server_address: tuple[str, int],
         request_handler_class: type[SimpleHTTPRequestHandler],
+        app_state: OpeningTrainerState,
         engine_service: StockfishService | None,
     ) -> None:
         super().__init__(server_address, request_handler_class)
+        self.app_state = app_state
         self.engine_service = engine_service
 
 
@@ -1023,6 +1725,9 @@ class StaticAppHandler(SimpleHTTPRequestHandler):
 
     def _engine_service(self) -> StockfishService | None:
         return getattr(self.server, "engine_service", None)
+
+    def _app_state(self) -> OpeningTrainerState:
+        return getattr(self.server, "app_state")
 
     def _send_path(self, file_path: Path) -> None:
         if not file_path.exists() or not file_path.is_file():
@@ -1053,7 +1758,10 @@ class StaticAppHandler(SimpleHTTPRequestHandler):
             )
             return self._write_json(payload)
         if parsed.path == "/api/lessons":
-            return self._write_json(lesson_payload(include_local_paths=True))
+            app_state = self._app_state()
+            return self._write_json(
+                lesson_payload(app_state.sources.values(), include_local_paths=True)
+            )
         if parsed.path.startswith("/api/lessons/file/"):
             lesson_id = parsed.path.rsplit("/", 1)[-1]
             lesson = next((item for item in LESSON_LIBRARY if item.lesson_id == lesson_id), None)
@@ -1116,8 +1824,13 @@ class StaticAppHandler(SimpleHTTPRequestHandler):
         self._write_json(evaluation)
 
 
-def serve_static_app(host: str, port: int, engine_service: StockfishService | None = None) -> None:
-    server = OpeningTrainerServer((host, port), StaticAppHandler, engine_service)
+def serve_static_app(
+    host: str,
+    port: int,
+    app_state: OpeningTrainerState,
+    engine_service: StockfishService | None = None,
+) -> None:
+    server = OpeningTrainerServer((host, port), StaticAppHandler, app_state, engine_service)
     if engine_service is not None:
         engine_status = engine_service.status_payload()
         print(
@@ -1188,7 +1901,7 @@ def main() -> None:
         depth=args.engine_depth,
         time_ms=args.engine_time_ms,
     )
-    serve_static_app(args.host, args.port, engine_service=engine_service)
+    serve_static_app(args.host, args.port, state, engine_service=engine_service)
 
 
 if __name__ == "__main__":

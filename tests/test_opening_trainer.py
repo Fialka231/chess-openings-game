@@ -67,7 +67,12 @@ class OpeningTrainerTests(unittest.TestCase):
             self.assertEqual(database_payload["formatVersion"], 2)
             self.assertTrue(database_payload["inputsSignature"])
             self.assertGreaterEqual(len(lessons_payload["lessons"]), 10)
+            self.assertEqual(lessons_payload["formatVersion"], 2)
             self.assertIn("my-system", {lesson["id"] for lesson in lessons_payload["lessons"]})
+            self.assertIn(
+                "guide-french-defense",
+                {lesson["id"] for lesson in lessons_payload["lessons"]},
+            )
 
             book_payload = json.loads(
                 (output_root / "books" / f"{self.qp_id}.json").read_text(encoding="utf-8")
@@ -131,6 +136,21 @@ class OpeningTrainerTests(unittest.TestCase):
         self.assertTrue((vendor_root / "stockfish-18-lite-single.js").exists())
         self.assertTrue((vendor_root / "stockfish-18-lite-single.wasm").exists())
         self.assertTrue((vendor_root / "COPYING.txt").exists())
+
+    def test_lessons_manifest_contains_opening_guides_and_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            payload = self.state.write_lessons_manifest(output_root=Path(temp_dir))
+            lessons = {lesson["id"]: lesson for lesson in payload["lessons"]}
+
+            french_guide = lessons["guide-french-defense"]
+            self.assertEqual(french_guide["kind"], "guide")
+            self.assertIn(self.kp_id, french_guide["matchedOpeningIds"])
+            self.assertGreaterEqual(len(french_guide["resources"]), 2)
+            self.assertGreaterEqual(len(french_guide["relatedBooks"]), 1)
+
+            local_book = lessons["my-system"]
+            self.assertEqual(local_book["kind"], "book")
+            self.assertIn("resources", local_book)
 
     def test_static_handler_serves_wasm_with_expected_mime_type(self) -> None:
         self.assertEqual(

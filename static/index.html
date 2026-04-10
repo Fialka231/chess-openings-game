@@ -403,9 +403,9 @@
             <p class="eyebrow">Lessons Library</p>
             <h1>Study shelf</h1>
             <p class="hero-copy practice-copy">
-              Use your chess book collection as a guided learning area inside the app. The
-              hosted site shows the catalog, and local runs can open the files available on
-              this machine.
+              Study opening guides matched to your repertoire, then reinforce them with the
+              books already in your chess library. The goal is to move beyond memory and
+              into real positional understanding.
             </p>
           </div>
           <div class="section-actions">
@@ -433,7 +433,7 @@
                   <p class="panel-label">Library</p>
                   <h3 id="lesson-count">Loading...</h3>
                 </div>
-                <span class="subtle-copy">Curated from your local chess resources</span>
+                <span class="subtle-copy">Opening guides plus your chess book shelf</span>
               </div>
               <div id="lesson-list" class="lesson-list"></div>
             </section>
@@ -443,24 +443,27 @@
             <section class="card lessons-overview">
               <div class="lesson-track-grid">
                 <div class="track-card">
-                  <p class="panel-label">Openings</p>
-                  <h3>Repertoire context</h3>
+                  <p class="panel-label">Opening Guides</p>
+                  <h3>Understand ideas</h3>
                   <p class="subtle-copy">
-                    Pair your drills with broader opening references and 1.d4 study material.
+                    Each guide now ties real opening families to resources, related files, and
+                    study steps you can follow.
                   </p>
                 </div>
                 <div class="track-card">
-                  <p class="panel-label">Core Chess</p>
-                  <h3>Plans and strategy</h3>
+                  <p class="panel-label">Book Shelf</p>
+                  <h3>Use your library</h3>
                   <p class="subtle-copy">
-                    Use classics like <em>My System</em> and annotated games to connect moves to plans.
+                    Books stay in the loop as supporting references for strategy, plans,
+                    tactics, and technical conversion.
                   </p>
                 </div>
                 <div class="track-card">
-                  <p class="panel-label">Practical Strength</p>
-                  <h3>Tactics and endgames</h3>
+                  <p class="panel-label">Road To 1500</p>
+                  <h3>Study then drill</h3>
                   <p class="subtle-copy">
-                    Balance pattern work, technical endings, and psychology alongside opening memory.
+                    Learn the opening ideas first, then jump back into practice to test recall
+                    and decision quality under pressure.
                   </p>
                 </div>
               </div>
@@ -483,6 +486,10 @@
                 Your study shelf will appear here after the lesson catalog loads.
               </p>
 
+              <div id="selected-lesson-context" class="info-card lesson-context-card">
+                Select a guide to see its opening coverage, resource links, and supporting books.
+              </div>
+
               <div class="lesson-detail-grid">
                 <div class="info-card">
                   <p class="panel-label">Focus</p>
@@ -491,16 +498,56 @@
                   </p>
                 </div>
                 <div class="info-card">
-                  <p class="panel-label">Format</p>
+                  <p class="panel-label">Format And Coverage</p>
                   <p id="selected-lesson-format" class="subtle-copy lesson-copy">
                     Format details will appear here.
                   </p>
                 </div>
               </div>
 
+              <div class="lesson-detail-grid">
+                <div class="info-card">
+                  <p class="panel-label">Key Ideas</p>
+                  <div id="selected-lesson-ideas" class="lesson-bullet-list empty">
+                    No lesson selected.
+                  </div>
+                </div>
+                <div class="info-card">
+                  <p class="panel-label">Study Path</p>
+                  <div id="selected-lesson-plan" class="lesson-bullet-list empty">
+                    No lesson selected.
+                  </div>
+                </div>
+              </div>
+
               <div class="info-card">
                 <p class="panel-label">Tags</p>
                 <div id="selected-lesson-tags" class="chip-row empty">No lesson selected.</div>
+              </div>
+
+              <div class="info-card">
+                <div class="row-head">
+                  <p class="panel-label">Resources</p>
+                  <span class="subtle-copy">Verified free links and local files</span>
+                </div>
+                <div id="selected-lesson-resources" class="resource-list empty">
+                  No resources available yet.
+                </div>
+              </div>
+
+              <div class="info-card">
+                <p class="panel-label">Covered Openings</p>
+                <div id="selected-lesson-openings" class="chip-row empty">No opening coverage yet.</div>
+              </div>
+
+              <div class="info-card">
+                <div class="row-head">
+                  <p class="panel-label">Books From Your Shelf</p>
+                  <span class="subtle-copy">Use these after the guide for deeper study</span>
+                </div>
+                <div id="selected-lesson-books" class="support-list empty">
+                  No supporting books linked yet.
+                </div>
               </div>
 
               <div class="lesson-actions">
@@ -512,10 +559,10 @@
                   rel="noreferrer"
                   aria-disabled="true"
                 >
-                  Open Lesson
+                  Open Main Resource
                 </a>
                 <button id="lesson-practice-link" class="ghost-btn" type="button">
-                  Go To Practice
+                  Practice This Family
                 </button>
               </div>
             </section>
