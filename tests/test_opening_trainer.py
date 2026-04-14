@@ -67,10 +67,14 @@ class OpeningTrainerTests(unittest.TestCase):
             self.assertEqual(database_payload["formatVersion"], 2)
             self.assertTrue(database_payload["inputsSignature"])
             self.assertGreaterEqual(len(lessons_payload["lessons"]), 10)
-            self.assertEqual(lessons_payload["formatVersion"], 2)
+            self.assertEqual(lessons_payload["formatVersion"], 3)
             self.assertIn("my-system", {lesson["id"] for lesson in lessons_payload["lessons"]})
             self.assertIn(
                 "guide-french-defense",
+                {lesson["id"] for lesson in lessons_payload["lessons"]},
+            )
+            self.assertIn(
+                "course-caro-kann-black",
                 {lesson["id"] for lesson in lessons_payload["lessons"]},
             )
 
@@ -147,6 +151,18 @@ class OpeningTrainerTests(unittest.TestCase):
             self.assertIn(self.kp_id, french_guide["matchedOpeningIds"])
             self.assertGreaterEqual(len(french_guide["resources"]), 2)
             self.assertGreaterEqual(len(french_guide["relatedBooks"]), 1)
+
+            caro_course = lessons["course-caro-kann-black"]
+            self.assertEqual(caro_course["kind"], "master-course")
+            self.assertEqual(caro_course["practiceOpeningId"], "kingspawn-caro-kannclassic")
+            self.assertGreaterEqual(len(caro_course["sections"]), 4)
+            self.assertGreaterEqual(len(caro_course["variations"]), 7)
+
+            queens_gambit_course = lessons["course-queens-gambit-white"]
+            self.assertEqual(queens_gambit_course["kind"], "master-course")
+            self.assertEqual(len(queens_gambit_course["matchedOpeningIds"]), 0)
+            self.assertGreaterEqual(queens_gambit_course["openingCount"], 7)
+            self.assertGreaterEqual(len(queens_gambit_course["resources"]), 5)
 
             local_book = lessons["my-system"]
             self.assertEqual(local_book["kind"], "book")

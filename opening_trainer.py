@@ -78,6 +78,45 @@ class OpeningGuideTemplate:
     related_lesson_ids: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class LessonSection:
+    title: str
+    body: str
+    bullets: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class VariationGuide:
+    title: str
+    moves: str
+    why: str
+    trainer_note: str
+    checkpoints: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class MasterCourse:
+    lesson_id: str
+    title: str
+    focus: str
+    summary: str
+    coach_name: str
+    coach_intro: str
+    author: str
+    tags: tuple[str, ...]
+    key_ideas: tuple[str, ...]
+    study_plan: tuple[str, ...]
+    sections: tuple[LessonSection, ...]
+    variations: tuple[VariationGuide, ...]
+    resources: tuple[LessonLink, ...]
+    related_lesson_ids: tuple[str, ...]
+    source_name: str
+    practice_opening_id: str | None = None
+    match_prefixes: tuple[str, ...] = ()
+    match_ids: tuple[str, ...] = ()
+    opening_names: tuple[str, ...] = ()
+
+
 LESSON_LIBRARY: tuple[LessonSource, ...] = (
     LessonSource(
         lesson_id="chess-opening-essentials-vol-4",
@@ -223,6 +262,405 @@ D4_REFERENCE_IDS = (
     "attacking-with-1d4",
     "chess-opening-essentials-vol-4",
     "modern-chess-openings-15",
+)
+
+MASTER_COURSES: tuple[MasterCourse, ...] = (
+    MasterCourse(
+        lesson_id="course-queens-gambit-white",
+        title="Queen's Gambit Master Course For White",
+        focus="Build a White repertoire around 1.d4 2.c4 that is principled, correct, and practical through move five and beyond.",
+        summary="This course teaches the Queen's Gambit as a complete White system. The goal is not just to remember a move list, but to understand which central tension you are creating, which black setups are most common, and which clean move-order choices keep you in control against club-level sidelines and main lines alike.",
+        coach_name="Trainer Rook",
+        coach_intro="Trainer Rook says: do not think of the Queen's Gambit as one opening. Think of it as one question - can Black solve the d5-pawn tension without conceding structure, space, or development? Every variation in this course is an answer to that question.",
+        author="Trainer Rook",
+        tags=(
+            "opening course",
+            "queen's gambit",
+            "white repertoire",
+            "d4 openings",
+            "positional play",
+        ),
+        key_ideas=(
+            "Your c4-pawn is not a random gambit. It asks Black whether the d5-pawn can stay healthy once the center is challenged.",
+            "Against ...e6 you are usually aiming for either central pressure or the long-term minority-attack style structures that come from the QGD.",
+            "Against ...dxc4 you must regain the pawn with development, not with greed.",
+            "Against ...c6 you must recognize whether Black is heading for a pure Slav, a Semi-Slav structure, or a quick ...dxc4 setup.",
+            "The cleanest White move orders are usually the ones that keep e2-e4 as a future option.",
+        ),
+        study_plan=(
+            "Memorize the branch map first: QGD, QGA, Slav, and then the rare sidelines.",
+            "Play the recommended line in each branch until you can say the plan aloud without looking.",
+            "After every drill, explain which side is fighting for e4, c4, or the c-file. If you cannot explain that, the line is not learned yet.",
+            "Review one main-line branch and one rare sideline each session so practical coverage stays broad.",
+        ),
+        sections=(
+            LessonSection(
+                title="Opening DNA",
+                body="The Queen's Gambit starts with 1.d4 d5 2.c4. White is not trying to win a pawn immediately. White is trying to make Black decide how to defend the d5-pawn and what kind of center Black is willing to accept.",
+                bullets=(
+                    "If Black keeps the center with ...e6, the game becomes a Queen's Gambit Declined structure.",
+                    "If Black captures with ...dxc4, White should regain the pawn while developing rapidly.",
+                    "If Black supports d5 with ...c6, the game becomes a Slav family position and the bishop on c8 matters a lot.",
+                ),
+            ),
+            LessonSection(
+                title="What White Is Really Playing For",
+                body="White's long-term dream is one of three things: a safe e2-e4 break, lasting pressure on the queenside dark squares, or a favorable endgame structure after Black solves the opening a little too passively.",
+                bullets=(
+                    "In QGD structures, White often wins by better space usage and cleaner piece coordination.",
+                    "In the QGA, White often wins time and development by recovering the pawn naturally.",
+                    "In Slav positions, White often has to prove slightly more space while Black proves slightly more solidity.",
+                ),
+            ),
+            LessonSection(
+                title="Move-Order Discipline",
+                body="The easiest way to spoil a Queen's Gambit repertoire is to play useful-looking moves in the wrong order. Your first priority is to identify the branch correctly, then choose the setup that fits that branch.",
+                bullets=(
+                    "Against the QGA, Nf3 and e3 are usually the practical path to getting the c4-pawn back without drama.",
+                    "Against the Slav, Nf3 and Nc3 keep both rapid development and the a4 idea available.",
+                    "Against the QGD, Nc3 first is often the clearest way to keep central pressure and active piece play.",
+                ),
+            ),
+            LessonSection(
+                title="Typical Club-Level Mistakes To Punish",
+                body="At club level, Black often grabs the c4-pawn too long, delays development, or copies moves from one branch into another where they no longer fit.",
+                bullets=(
+                    "If Black hangs onto the c4-pawn in the QGA with too many pawn moves, White should hit the center and develop instead of hunting the pawn with the queen.",
+                    "If Black treats the Slav like a QGD and never clarifies the c8-bishop, White often gets smoother development.",
+                    "If Black enters the Albin or Chigorin without understanding the pawn structure, principled development is usually enough for White to keep the upper hand.",
+                ),
+            ),
+        ),
+        variations=(
+            VariationGuide(
+                title="Main Line Versus The Queen's Gambit Declined",
+                moves="1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.e3 O-O 6.Nf3",
+                why="This is the classical Queen's Gambit structure. White develops harmoniously, keeps pressure on d5, and prepares Rc1, Bd3, or Qc2 depending on Black's setup.",
+                trainer_note="Trainer Rook: this line is not about a quick tactic. It is about refusing to give Black an easy freeing break.",
+                checkpoints=(
+                    "Do not rush cxd5 unless the resulting structure benefits you.",
+                    "Remember that Bg5 is useful because it makes ...Ne4 and ...dxc4 more difficult to arrange comfortably.",
+                ),
+            ),
+            VariationGuide(
+                title="Exchange QGD Repertoire Line",
+                moves="1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.cxd5 exd5 5.Bg5 Be7 6.e3",
+                why="The Exchange line gives White a stable structural edge to work with. The usual long-term plan is active piece play and, in many cases, the minority attack with b4-b5 later on.",
+                trainer_note="Trainer Rook: symmetrical pawns do not mean symmetrical play. White usually has the easier plan.",
+                checkpoints=(
+                    "You are playing against Black's queenside structure, not trying to prove an immediate tactical edge.",
+                    "Keep your light-squared bishop active before committing too many pawns.",
+                ),
+            ),
+            VariationGuide(
+                title="Queen's Gambit Accepted Recovery Line",
+                moves="1.d4 d5 2.c4 dxc4 3.Nf3 Nf6 4.e3 e6 5.Bxc4 c5 6.O-O",
+                why="This is the practical White answer to the QGA. White regains the pawn with development and reaches an open position where the healthier center and faster king safety matter.",
+                trainer_note="Trainer Rook: when Black takes on c4, your revenge is development, not pawn greed.",
+                checkpoints=(
+                    "Avoid early queen adventures unless Black makes a concrete mistake.",
+                    "Once the pawn is back, compare whose pieces are easier to activate. It is usually White's.",
+                ),
+            ),
+            VariationGuide(
+                title="Slav Main Line Blueprint",
+                moves="1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.Nc3 dxc4 5.a4 Bf5 6.e3",
+                why="The a4 move stops ...b5 ideas and prepares Bxc4 without letting Black hold the c4-pawn cheaply. This is one of the key structural tests of the Slav.",
+                trainer_note="Trainer Rook: in the Slav, respect Black's solidity but do not let the extra c-pawn stay alive for free.",
+                checkpoints=(
+                    "The point of a4 is strategic, not decorative: it removes Black's easiest way of hanging onto c4.",
+                    "If Black solves the bishop problem comfortably, your opening edge shrinks fast.",
+                ),
+            ),
+            VariationGuide(
+                title="Quiet Slav Structure",
+                moves="1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.e3 Bf5 5.Nc3 e6 6.Nh4",
+                why="This line teaches an important White idea: if Black develops the c8-bishop too early, White can often challenge it directly and gain the bishop pair or structural concessions.",
+                trainer_note="Trainer Rook: the bishop on f5 is only active if White leaves it alone.",
+                checkpoints=(
+                    "Nh4 is not a random knight jump; it asks whether Black's bishop is overextended.",
+                    "If Black retreats badly, White keeps a pleasant spatial edge with easy development.",
+                ),
+            ),
+            VariationGuide(
+                title="Albin Countergambit Refutation Scheme",
+                moves="1.d4 d5 2.c4 e5 3.dxe5 d4 4.Nf3 Nc6 5.a3 Be6 6.Nbd2",
+                why="The Albin is dangerous only if White panics. White should finish development, challenge the advanced d-pawn, and avoid giving Black cheap initiative.",
+                trainer_note="Trainer Rook: when Black gambits in the Albin, your job is not to attack immediately. Your job is to prove the d4-pawn cannot live forever.",
+                checkpoints=(
+                    "Do not waste time trying to win by force; simply undermine d4 and complete development.",
+                    "Fianchetto setups are often strong once the center is stable.",
+                ),
+            ),
+            VariationGuide(
+                title="Chigorin Defense Practical Line",
+                moves="1.d4 d5 2.c4 Nc6 3.Nc3 Nf6 4.Nf3 Bg4 5.cxd5 Nxd5 6.e4",
+                why="White reacts to Black's unusual knight development with classical central play. If Black spends time on piece pressure instead of center stability, White can often seize space.",
+                trainer_note="Trainer Rook: against the Chigorin, trust the center first and only then calculate tactics.",
+                checkpoints=(
+                    "The move e4 is the key proof move whenever Black allows it under good conditions.",
+                    "Do not drift into passive development against an offbeat defense.",
+                ),
+            ),
+            VariationGuide(
+                title="Marshall Defense Quick Answer",
+                moves="1.d4 d5 2.c4 Nf6 3.cxd5 Nxd5 4.Nf3 Nf6 5.Nc3 e6 6.e4",
+                why="The Marshall Defense tries to sidestep normal Queen's Gambit structures. White should answer classically, recover central space, and make Black justify the knight excursion.",
+                trainer_note="Trainer Rook: when Black leaves the main road too early, the simplest punishment is often to claim the center cleanly.",
+                checkpoints=(
+                    "Do not rush to win by force; just use the time Black spent moving the knight twice.",
+                    "Rare lines such as the Marshall or Baltic are usually beaten by calm development plus central space.",
+                ),
+            ),
+        ),
+        resources=(
+            LessonLink(
+                label="Queen's Gambit overview",
+                url="https://en.wikipedia.org/wiki/Queen%27s_Gambit",
+                source="Wikipedia",
+                description="Overview of the opening family and Black's major replies after 1.d4 d5 2.c4.",
+            ),
+            LessonLink(
+                label="Queen's Gambit opening guide",
+                url="https://www.chess.com/openings/Queens-Gambit",
+                source="Chess.com",
+                description="Practical opening page with branch map, starting ideas, and linked variations.",
+            ),
+            LessonLink(
+                label="Queen's Gambit Declined reference",
+                url="https://en.wikipedia.org/wiki/Queen%27s_Gambit_Declined",
+                source="Wikipedia",
+                description="Reference page for QGD structures, the traditional line, and the Exchange Variation.",
+            ),
+            LessonLink(
+                label="Queen's Gambit Accepted reference",
+                url="https://en.wikipedia.org/wiki/Queen%27s_Gambit_Accepted",
+                source="Wikipedia",
+                description="Reference page for the accepted line and the key pawn-recovery ideas for White.",
+            ),
+            LessonLink(
+                label="Slav Defense reference",
+                url="https://en.wikipedia.org/wiki/Slav_Defense",
+                source="Wikipedia",
+                description="Reference page for the Slav main line and the central role of the c8-bishop.",
+            ),
+            LessonLink(
+                label="Queen's Gambit study collection",
+                url="https://lichess.org/study/topic/Queens%20Gambit%20Declined/popular",
+                source="Lichess Studies",
+                description="Community study collection that is useful for visualizing model positions and plans.",
+            ),
+        ),
+        related_lesson_ids=(
+            "attacking-with-1d4",
+            "chess-opening-essentials-vol-4",
+            "modern-chess-openings-15",
+            "my-system",
+            "logical-chess-move-by-move",
+        ),
+        source_name="White master course",
+        opening_names=(
+            "QGD Main Line",
+            "QGD Exchange",
+            "QGA Recovery Line",
+            "Slav Main Line",
+            "Slav Quiet Line",
+            "Albin Countergambit",
+            "Chigorin Defense",
+            "Marshall Defense",
+        ),
+    ),
+    MasterCourse(
+        lesson_id="course-caro-kann-black",
+        title="Caro-Kann Master Course For Black",
+        focus="Build a dependable Black repertoire against 1.e4 that is structurally sound, practical, and ready for the main white tries through move five and beyond.",
+        summary="This course teaches the Caro-Kann as a complete Black system. You will learn not just where the pieces go, but why the c6-d5 structure is so resilient, how the light-squared bishop shapes almost every branch, and how to answer the main White systems without losing the positional logic that makes the Caro-Kann strong.",
+        coach_name="Trainer Rook",
+        coach_intro="Trainer Rook says: the Caro-Kann is not passive. It is disciplined. If you know when to trade in the center, when to preserve structure, and when the bishop belongs outside the chain, you will reach good positions against almost every club-level 1.e4 player.",
+        author="Trainer Rook",
+        tags=(
+            "opening course",
+            "caro-kann",
+            "black repertoire",
+            "e4 defense",
+            "solid chess",
+        ),
+        key_ideas=(
+            "The move ...c6 prepares ...d5 while keeping the c8-bishop free, which is the whole strategic point of choosing the Caro-Kann over the French.",
+            "In most branches Black is trying to solve development without accepting long-term structural damage.",
+            "The c-pawn trade often defines the middlegame: Exchange and Panov lines are about structure; Classical and Advance lines are about piece placement and timing.",
+            "Against sharp white ideas such as the Fantasy, the simplest antidote is often central clarity rather than fancy tactics.",
+            "If you know where the light-squared bishop belongs, you understand half of the opening already.",
+        ),
+        study_plan=(
+            "Memorize the branch map first: Classical, 3.Nd2, Advance, Exchange, Panov, Fantasy, then the rare tries.",
+            "Train one solid branch and one sharp branch in the same session so your repertoire stays balanced.",
+            "After each drill, explain whether Black's job was to keep structure, trade a knight, or counterattack the center.",
+            "Review the Advance and Panov often, because those are the branches where White players most often try to take the initiative early.",
+        ),
+        sections=(
+            LessonSection(
+                title="Opening DNA",
+                body="The Caro-Kann begins with 1.e4 c6, aiming for ...d5 next. Black wants a French-like central challenge without burying the c8-bishop behind the e6-pawn chain.",
+                bullets=(
+                    "Your opening is built on structure first and counterplay second.",
+                    "The usual Caro-Kann success story is simple: equalize the center cleanly, finish development, and let White prove an advantage that often is not there.",
+                    "The more White overextends, the more attractive Black's solid shell becomes.",
+                ),
+            ),
+            LessonSection(
+                title="The Light-Squared Bishop Rule",
+                body="If you are lost in a Caro-Kann position, look at the c8-bishop. In the good versions of the opening, that bishop comes out before Black locks the e-pawn or at least has a clear route to activity.",
+                bullets=(
+                    "In the Classical line, Bf5 is the signature move because it develops before e6 closes the diagonal.",
+                    "In the Advance line, the bishop often comes to f5 or g6 and Black must decide whether to strike with ...c5 or ...e6 first.",
+                    "In the Panov and Exchange structures, the bishop can become a pure endgame piece if Black is too casual.",
+                ),
+            ),
+            LessonSection(
+                title="How Black Equalizes",
+                body="Black rarely equalizes in the Caro-Kann by one tactical sequence. Black equalizes by reaching a position where White has no easy target, Black has no structural scars, and the center is under control.",
+                bullets=(
+                    "Against 3.Nc3 or 3.Nd2, Black often seeks a clean knight exchange and a stable pawn skeleton.",
+                    "Against the Advance, Black usually wants timely pressure on d4 and a plan against White's kingside space.",
+                    "Against the Panov, Black must judge whether the isolated queen's pawn positions favor activity or simplification.",
+                ),
+            ),
+            LessonSection(
+                title="Typical Club-Level Mistakes To Punish",
+                body="White often attacks too early in the Caro-Kann or copies a fashionable line without understanding the structure. That is where Black scores.",
+                bullets=(
+                    "If White pushes too many kingside pawns in the Advance without development, Black's central counterplay arrives quickly.",
+                    "If White treats the Exchange like a dead draw, Black often gets the easier piece play and cleaner endgame.",
+                    "If White enters the Fantasy without concrete preparation, Black's direct central strike is often enough.",
+                ),
+            ),
+        ),
+        variations=(
+            VariationGuide(
+                title="Classical Repertoire Core",
+                moves="1.e4 c6 2.d4 d5 3.Nc3 dxe4 4.Nxe4 Bf5 5.Ng3 Bg6",
+                why="This is the cleanest classical Caro-Kann shell. Black develops the bishop actively, keeps the structure healthy, and asks White to prove an edge in a balanced position.",
+                trainer_note="Trainer Rook: in the Classical line, you are not surviving. You are building a position you understand better than your opponent.",
+                checkpoints=(
+                    "Bf5 is the move that justifies the Caro-Kann conceptually.",
+                    "After Ng3, Bg6 keeps the bishop alive and preserves Black's structure.",
+                ),
+            ),
+            VariationGuide(
+                title="3.Nd2 Karpov-Style Setup",
+                moves="1.e4 c6 2.d4 d5 3.Nd2 dxe4 4.Nxe4 Nd7 5.Nf3 Ngf6",
+                why="The 3.Nd2 line aims to reduce some of White's sharper options. Black responds with a compact setup, planning smooth development and stable central control.",
+                trainer_note="Trainer Rook: this branch is about not giving White a clear target. Everything Black does should feel modest and healthy.",
+                checkpoints=(
+                    "The move ...Nd7 avoids committing the bishop too early and prepares ...Ngf6 cleanly.",
+                    "Do not rush pawn breaks until development is coordinated.",
+                ),
+            ),
+            VariationGuide(
+                title="Advance Variation Main Answer",
+                moves="1.e4 c6 2.d4 d5 3.e5 Bf5 4.Nc3 e6 5.g4 Bg6 6.Nge2 c5",
+                why="White grabs space, so Black must challenge the center and avoid getting squeezed. The bishop retreat to g6 and the later ...c5 strike are the key thematic ideas.",
+                trainer_note="Trainer Rook: if White gains space, your job is not to complain about space. Your job is to undermine it.",
+                checkpoints=(
+                    "Do not abandon the bishop pair concept too cheaply in the Advance.",
+                    "The move ...c5 is often the soul of Black's counterplay.",
+                ),
+            ),
+            VariationGuide(
+                title="Advance Variation Quiet Setup",
+                moves="1.e4 c6 2.d4 d5 3.e5 Bf5 4.Nf3 e6 5.Be2 c5 6.O-O",
+                why="Many club players choose a quieter Advance setup. Black should still answer with the same logic: finish development, hit d4, and avoid letting White keep a free space edge.",
+                trainer_note="Trainer Rook: the quieter White is, the more you should trust the standard Caro-Kann plan.",
+                checkpoints=(
+                    "The structure matters more than the exact move order here.",
+                    "Black is usually aiming for ...Nc6, ...Qb6, or ...Ne7 depending on White's setup.",
+                ),
+            ),
+            VariationGuide(
+                title="Exchange Variation Structure",
+                moves="1.e4 c6 2.d4 d5 3.exd5 cxd5 4.Bd3 Nc6 5.c3 Nf6 6.Bf4",
+                why="The Exchange line is strategically important because it teaches how Black develops in a symmetrical structure without drifting into passivity.",
+                trainer_note="Trainer Rook: symmetrical pawns are an invitation to outplay, not an excuse to relax.",
+                checkpoints=(
+                    "Develop actively and compare piece quality, not just pawn shape.",
+                    "If White plays routinely, Black often gets very comfortable equality.",
+                ),
+            ),
+            VariationGuide(
+                title="Panov-Botvinnik Answer",
+                moves="1.e4 c6 2.d4 d5 3.exd5 cxd5 4.c4 Nf6 5.Nc3 e6 6.Nf3",
+                why="The Panov tries to create an isolated queen's pawn or open piece play. Black answers by completing development and keeping the central tension under control.",
+                trainer_note="Trainer Rook: in the Panov, do not fear activity. Just make sure White's activity is tied to a structural weakness.",
+                checkpoints=(
+                    "Know whether White is heading for an IQP or a symmetrical structure.",
+                    "Black often aims for ...Nc6, ...Be7, and calm pressure rather than flashy tactics.",
+                ),
+            ),
+            VariationGuide(
+                title="Fantasy Variation Safety Net",
+                moves="1.e4 c6 2.d4 d5 3.f3 dxe4 4.fxe4 e5 5.Nf3 exd4 6.Bc4",
+                why="The Fantasy is sharp, but Black does not need to panic. The clean central strike with ...dxe4 and ...e5 challenges White's setup before the kingside attack becomes real, and Black often welcomes the open center.",
+                trainer_note="Trainer Rook: when White spends a move on f3, ask whether the center can be hit immediately. In the Caro-Kann, the answer is often yes.",
+                checkpoints=(
+                    "Meet the Fantasy with central clarity, not with timid development.",
+                    "The more White delays development, the more attractive Black's immediate central play becomes.",
+                ),
+            ),
+            VariationGuide(
+                title="Rare-Tries Practical Response",
+                moves="1.e4 c6 2.Nc3 d5 3.Nf3 Bg4 4.h3 Bxf3 5.Qxf3 e6",
+                why="Against move-order tricks and modest sidelines, Black should keep the same Caro-Kann logic: challenge the center, develop without damage, and avoid inventing unnecessary complications.",
+                trainer_note="Trainer Rook: rare tries should still be answered by your opening principles, not by guesswork.",
+                checkpoints=(
+                    "If White delays d4, ask whether a classical Caro shell is still easy to build.",
+                    "Most sidelines score because Black abandons structure. Do not do that.",
+                ),
+            ),
+        ),
+        resources=(
+            LessonLink(
+                label="Caro-Kann overview",
+                url="https://en.wikipedia.org/wiki/Caro%E2%80%93Kann_Defence",
+                source="Wikipedia",
+                description="Reference page for the main branches, including the Classical, Modern, Advance, Exchange, and Panov structures.",
+            ),
+            LessonLink(
+                label="Caro-Kann opening guide",
+                url="https://www.chess.com/openings/Caro-Kann-Defense",
+                source="Chess.com",
+                description="Practical Caro-Kann guide with variation map and linked sub-branches.",
+            ),
+            LessonLink(
+                label="Caro-Kann study collection",
+                url="https://lichess.org/study/topic/Caro-Kann%20Defense/hot",
+                source="Lichess Studies",
+                description="Community studies and example branches that are useful for model-game review.",
+            ),
+            LessonLink(
+                label="Classical Caro-Kann branch",
+                url="https://www.chess.com/fa/openings/Caro-Kann-Defense-Classical-Variation",
+                source="Chess.com",
+                description="Opening page focused on the Classical Variation after 3.Nc3 dxe4 4.Nxe4 Bf5.",
+            ),
+            LessonLink(
+                label="Fantasy Variation branch",
+                url="https://www.chess.com/openings/Caro-Kann-Defense-Fantasy-Variation-3...e6-4.Nc3",
+                source="Chess.com",
+                description="Opening page for one of White's sharper anti-Caro systems.",
+            ),
+        ),
+        related_lesson_ids=(
+            "chess-opening-essentials-vol-4",
+            "modern-chess-openings-15",
+            "my-system",
+            "logical-chess-move-by-move",
+            "improve-your-chess-now",
+        ),
+        source_name="Black master course",
+        practice_opening_id="kingspawn-caro-kannclassic",
+        match_prefixes=("kingspawn-caro-kann",),
+    ),
 )
 
 OPENING_GUIDES: tuple[OpeningGuideTemplate, ...] = (
@@ -863,6 +1301,10 @@ def lesson_book_entry(lesson: LessonSource, include_local_paths: bool = False) -
         "resourceCount": len(resources),
         "keyIdeas": [],
         "studyPlan": [],
+        "coachName": None,
+        "coachIntro": None,
+        "sections": [],
+        "variations": [],
         "matchedOpeningIds": [],
         "matchedOpeningNames": [],
         "openingCount": 0,
@@ -901,6 +1343,28 @@ def matching_sources_for_guide(
             matches.append(source)
             continue
         if any(prefix in blob for prefix in template.match_prefixes):
+            matches.append(source)
+    matches.sort(key=lambda item: (item.category.lower(), item.display_name.lower()))
+    return matches
+
+
+def matching_sources(
+    prefixes: Iterable[str],
+    ids: Iterable[str],
+    sources: Iterable[OpeningSource],
+) -> list[OpeningSource]:
+    prefix_list = tuple(prefixes)
+    id_set = set(ids)
+    matches = []
+    for source in sources:
+        blob = opening_source_blob(source)
+        if source.opening_id in id_set:
+            matches.append(source)
+            continue
+        if any(source.opening_id.startswith(prefix) for prefix in prefix_list):
+            matches.append(source)
+            continue
+        if any(prefix in blob for prefix in prefix_list):
             matches.append(source)
     matches.sort(key=lambda item: (item.category.lower(), item.display_name.lower()))
     return matches
@@ -965,6 +1429,75 @@ def guide_resource_entries(template: OpeningGuideTemplate) -> list[dict[str, str
     ]
 
 
+def master_course_entry(
+    course: MasterCourse,
+    sources: Iterable[OpeningSource],
+    include_local_paths: bool = False,
+) -> dict[str, Any]:
+    matches = matching_sources(course.match_prefixes, course.match_ids, sources)
+    opening_names = (
+        list(course.opening_names)
+        if course.opening_names
+        else [source.display_name for source in matches]
+    )
+    return {
+        "id": course.lesson_id,
+        "kind": "master-course",
+        "title": course.title,
+        "author": course.author,
+        "category": "Opening Courses",
+        "resourceType": "Master Course",
+        "focus": course.focus,
+        "summary": course.summary,
+        "sourceName": course.source_name,
+        "tags": list(course.tags),
+        "availableLocally": False,
+        "sizeMb": None,
+        "fileUrl": None,
+        "resources": [
+            {
+                "label": resource.label,
+                "url": resource.url,
+                "source": resource.source,
+                "description": resource.description,
+            }
+            for resource in course.resources
+        ],
+        "resourceCount": len(course.resources),
+        "keyIdeas": list(course.key_ideas),
+        "studyPlan": list(course.study_plan),
+        "coachName": course.coach_name,
+        "coachIntro": course.coach_intro,
+        "sections": [
+            {
+                "title": section.title,
+                "body": section.body,
+                "bullets": list(section.bullets),
+            }
+            for section in course.sections
+        ],
+        "variations": [
+            {
+                "title": variation.title,
+                "moves": variation.moves,
+                "why": variation.why,
+                "trainerNote": variation.trainer_note,
+                "checkpoints": list(variation.checkpoints),
+            }
+            for variation in course.variations
+        ],
+        "matchedOpeningIds": [source.opening_id for source in matches],
+        "matchedOpeningNames": opening_names,
+        "openingCount": len(opening_names),
+        "practiceOpeningId": course.practice_opening_id or (matches[0].opening_id if matches else None),
+        "relatedBooks": related_book_entries(
+            course.related_lesson_ids,
+            include_local_paths=include_local_paths,
+        ),
+        "sortGroup": -1,
+    }
+
+
 def opening_guide_entry(
     template: OpeningGuideTemplate,
     sources: Iterable[OpeningSource],
@@ -995,6 +1528,10 @@ def opening_guide_entry(
         "resourceCount": len(resources),
         "keyIdeas": list(template.key_ideas),
         "studyPlan": list(template.study_plan),
+        "coachName": None,
+        "coachIntro": None,
+        "sections": [],
+        "variations": [],
         "matchedOpeningIds": [source.opening_id for source in matches],
         "matchedOpeningNames": opening_names,
         "openingCount": len(matches),
@@ -1015,6 +1552,14 @@ def lesson_payload(
         lesson_book_entry(lesson, include_local_paths=include_local_paths)
         for lesson in LESSON_LIBRARY
     ]
+    for course in MASTER_COURSES:
+        lessons.append(
+            master_course_entry(
+                course,
+                sources,
+                include_local_paths=include_local_paths,
+            )
+        )
     for template in OPENING_GUIDES:
         entry = opening_guide_entry(
             template,
@@ -1034,7 +1579,7 @@ def lesson_payload(
     for lesson in lessons:
         lesson.pop("sortGroup", None)
     return {
-        "formatVersion": 2,
+        "formatVersion": 3,
         "builtAt": utc_timestamp(),
         "lessons": lessons,
     }

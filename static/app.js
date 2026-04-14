@@ -164,11 +164,14 @@ const elements = {
   selectedLessonMeta: document.getElementById("selected-lesson-meta"),
   selectedLessonSummary: document.getElementById("selected-lesson-summary"),
   selectedLessonContext: document.getElementById("selected-lesson-context"),
+  selectedLessonCoach: document.getElementById("selected-lesson-coach"),
   selectedLessonFocus: document.getElementById("selected-lesson-focus"),
   selectedLessonFormat: document.getElementById("selected-lesson-format"),
   selectedLessonIdeas: document.getElementById("selected-lesson-ideas"),
   selectedLessonPlan: document.getElementById("selected-lesson-plan"),
   selectedLessonTags: document.getElementById("selected-lesson-tags"),
+  selectedLessonSections: document.getElementById("selected-lesson-sections"),
+  selectedLessonVariations: document.getElementById("selected-lesson-variations"),
   selectedLessonResources: document.getElementById("selected-lesson-resources"),
   selectedLessonOpenings: document.getElementById("selected-lesson-openings"),
   selectedLessonBooks: document.getElementById("selected-lesson-books"),
@@ -267,6 +270,9 @@ function lessonMatchesActiveOpening(lesson) {
 }
 
 function lessonDisplayMetric(lesson) {
+  if (lesson.kind === "master-course") {
+    return `${lesson.openingCount || 0} core ${pluralize(lesson.openingCount || 0, "branch")}`;
+  }
   if (lesson.kind === "guide") {
     return `${lesson.openingCount || 0} ${pluralize(lesson.openingCount || 0, "opening file")}`;
   }
@@ -281,7 +287,12 @@ function sortedLessons(lessons) {
       return rightMatch - leftMatch;
     }
     if ((left.kind || "book") !== (right.kind || "book")) {
-      return left.kind === "guide" ? -1 : 1;
+      const weight = {
+        "master-course": 0,
+        guide: 1,
+        book: 2,
+      };
+      return (weight[left.kind || "book"] || 3) - (weight[right.kind || "book"] || 3);
     }
     if ((right.availableLocally ? 1 : 0) !== (left.availableLocally ? 1 : 0)) {
       return (right.availableLocally ? 1 : 0) - (left.availableLocally ? 1 : 0);
@@ -291,6 +302,16 @@ function sortedLessons(lessons) {
     }
     return left.title.localeCompare(right.title);
   });
+}
+
+function lessonTypeLabel(lesson) {
+  if (lesson.kind === "master-course") {
+    return "Master Course";
+  }
+  if (lesson.kind === "guide") {
+    return "Guide Pack";
+  }
+  return lesson.resourceType || "Lesson";
 }
 
 function focusBestLessonForCurrentOpening() {
@@ -2013,7 +2034,21 @@ function filteredLessons() {
       lesson.focus.toLowerCase().includes(query) ||
       lesson.tags.some((tag) => tag.toLowerCase().includes(query)) ||
       (lesson.matchedOpeningNames || []).some((name) => name.toLowerCase().includes(query)) ||
-      (lesson.keyIdeas || []).some((idea) => idea.toLowerCase().includes(query));
+      (lesson.keyIdeas || []).some((idea) => idea.toLowerCase().includes(query)) ||
+      (lesson.sections || []).some(
+        (section) =>
+          section.title.toLowerCase().includes(query) ||
+          section.body.toLowerCase().includes(query) ||
+          (section.bullets || []).some((bullet) => bullet.toLowerCase().includes(query)),
+      ) ||
+      (lesson.variations || []).some(
+        (variation) =>
+          variation.title.toLowerCase().includes(query) ||
+          variation.moves.toLowerCase().includes(query) ||
+          variation.why.toLowerCase().includes(query) ||
+          variation.trainerNote.toLowerCase().includes(query) ||
+          (variation.checkpoints || []).some((item) => item.toLowerCase().includes(query)),
+      );
     return matchesCategory && matchesQuery;
   });
   return sortedLessons(lessons);
@@ -2102,11 +2137,14 @@ function renderSelectedLesson() {
     !elements.selectedLessonMeta ||
     !elements.selectedLessonSummary ||
     !elements.selectedLessonContext ||
+    !elements.selectedLessonCoach ||
     !elements.selectedLessonFocus ||
     !elements.selectedLessonFormat ||
     !elements.selectedLessonIdeas ||
     !elements.selectedLessonPlan ||
     !elements.selectedLessonTags ||
+    !elements.selectedLessonSections ||
+    !elements.selectedLessonVariations ||
     !elements.selectedLessonResources ||
     !elements.selectedLessonOpenings ||
     !elements.selectedLessonBooks ||
@@ -2125,6 +2163,8 @@ function renderSelectedLesson() {
       "Your study shelf will appear here after the lesson catalog loads.";
     elements.selectedLessonContext.textContent =
       "Select a guide to see its opening coverage, resource links, and supporting books.";
+    elements.selectedLessonCoach.hidden = true;
+    elements.selectedLessonCoach.textContent = "";
     elements.selectedLessonFocus.textContent = "Lesson focus will appear here.";
     elements.selectedLessonFormat.textContent = "Format details will appear here.";
     elements.selectedLessonIdeas.className = "lesson-bullet-list empty";
@@ -2133,6 +2173,10 @@ function renderSelectedLesson() {
     elements.selectedLessonPlan.textContent = "No lesson selected.";
     elements.selectedLessonTags.className = "chip-row empty";
     elements.selectedLessonTags.textContent = "No lesson selected.";
+    elements.selectedLessonSections.className = "lesson-section-list empty";
+    elements.selectedLessonSections.textContent = "No structured chapters yet.";
+    elements.selectedLessonVariations.className = "variation-guide-list empty";
+    elements.selectedLessonVariations.textContent = "No variation guide yet.";
     elements.selectedLessonResources.className = "resource-list empty";
     elements.selectedLessonResources.textContent = "No resources available yet.";
     elements.selectedLessonOpenings.className = "chip-row empty";
@@ -2156,10 +2200,22 @@ function renderSelectedLesson() {
   elements.selectedLessonMeta.textContent =
     `${lesson.category} • ${lesson.author} • ${lesson.sourceName}`;
   elements.selectedLessonSummary.textContent = lesson.summary;
+  if (lesson.coachName && lesson.coachIntro) {
+    elements.selectedLessonCoach.hidden = false;
+    elements.selectedLessonCoach.innerHTML = `
+      <p class="panel-label">${lesson.coachName}</p>
+      <p class="coach-copy">${lesson.coachIntro}</p>
+    `;
+  } else {
+    elements.selectedLessonCoach.hidden = true;
+    elements.selectedLessonCoach.textContent = "";
+  }
   elements.selectedLessonFocus.textContent = lesson.focus;
   elements.selectedLessonFormat.textContent =
-    lesson.kind === "guide"
-      ? `${lesson.resourceType} • ${lesson.openingCount || 0} ${pluralize(lesson.openingCount || 0, "opening file")} covered`
+    lesson.kind === "master-course"
+      ? `${lessonTypeLabel(lesson)} • ${lesson.openingCount || 0} core ${pluralize(lesson.openingCount || 0, "branch")} covered`
+      : lesson.kind === "guide"
+        ? `${lesson.resourceType} • ${lesson.openingCount || 0} ${pluralize(lesson.openingCount || 0, "opening file")} covered`
       : `${lesson.resourceType}${lesson.sizeMb ? ` • ${lesson.sizeMb} MB` : ""}${lesson.availableLocally ? "" : " • keep this file in Lessons or Downloads to open it locally"}`;
   elements.selectedLessonStatus.className = `pill ${
     openingMatch ? "turn-black" : lesson.availableLocally ? "turn-white" : "subtle"
@@ -2168,12 +2224,16 @@ function renderSelectedLesson() {
     ? "Matches Current Opening"
     : lesson.availableLocally
       ? "Openable Here"
-      : lesson.kind === "guide"
+      : lesson.kind === "master-course"
+        ? "Course Ready"
+        : lesson.kind === "guide"
         ? "Guide Ready"
         : "Catalog Only";
   elements.selectedLessonContext.textContent = openingMatch && openingName
     ? `This lesson is the best current match for ${openingName}. Study the ideas first, then jump back into practice.`
-    : lesson.kind === "guide"
+    : lesson.kind === "master-course"
+      ? "This master course is built as a full teaching path: opening logic first, variation map second, and practical memory cues throughout."
+      : lesson.kind === "guide"
       ? `This guide covers ${lesson.openingCount || 0} repertoire ${pluralize(
           lesson.openingCount || 0,
           "file",
@@ -2213,7 +2273,66 @@ function renderSelectedLesson() {
     }
   } else {
     elements.selectedLessonPlan.textContent =
-      lesson.kind === "guide" ? "No study path was listed for this guide yet." : "Open the book and pair it with your practice sessions.";
+      lesson.kind === "master-course"
+        ? "No study path was listed for this course yet."
+        : lesson.kind === "guide"
+          ? "No study path was listed for this guide yet."
+          : "Open the book and pair it with your practice sessions.";
+  }
+
+  elements.selectedLessonSections.innerHTML = "";
+  elements.selectedLessonSections.className = lesson.sections?.length
+    ? "lesson-section-list"
+    : "lesson-section-list empty";
+  if (lesson.sections?.length) {
+    for (const section of lesson.sections) {
+      const card = document.createElement("article");
+      card.className = "lesson-section-card";
+      const bulletHtml = (section.bullets || [])
+        .map((bullet) => `<p class="lesson-bullet">${bullet}</p>`)
+        .join("");
+      card.innerHTML = `
+        <h4>${section.title}</h4>
+        <p>${section.body}</p>
+        ${bulletHtml ? `<div class="lesson-bullet-list">${bulletHtml}</div>` : ""}
+      `;
+      elements.selectedLessonSections.appendChild(card);
+    }
+  } else {
+    elements.selectedLessonSections.textContent =
+      lesson.kind === "master-course"
+        ? "No structured chapters were added for this course yet."
+        : "This lesson uses the shorter guide format.";
+  }
+
+  elements.selectedLessonVariations.innerHTML = "";
+  elements.selectedLessonVariations.className = lesson.variations?.length
+    ? "variation-guide-list"
+    : "variation-guide-list empty";
+  if (lesson.variations?.length) {
+    for (const variation of lesson.variations) {
+      const card = document.createElement("article");
+      card.className = "variation-guide-card";
+      const checkpointsHtml = (variation.checkpoints || [])
+        .map((item) => `<p class="lesson-bullet">${item}</p>`)
+        .join("");
+      card.innerHTML = `
+        <div class="variation-guide-head">
+          <h4>${variation.title}</h4>
+          <span class="category-badge">${lesson.kind === "master-course" ? "Course Line" : "Line"}</span>
+        </div>
+        <p class="variation-moves">${variation.moves}</p>
+        <p>${variation.why}</p>
+        <p class="variation-note">${variation.trainerNote}</p>
+        ${checkpointsHtml ? `<div class="lesson-bullet-list">${checkpointsHtml}</div>` : ""}
+      `;
+      elements.selectedLessonVariations.appendChild(card);
+    }
+  } else {
+    elements.selectedLessonVariations.textContent =
+      lesson.kind === "master-course"
+        ? "No variation guide was added for this course yet."
+        : "This lesson does not include a dedicated variation map.";
   }
 
   elements.selectedLessonTags.innerHTML = "";

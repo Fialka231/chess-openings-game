@@ -938,6 +938,19 @@ select {
   line-height: 1.55;
 }
 
+.coach-card {
+  margin-bottom: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.45), transparent 34%),
+    rgba(180, 94, 58, 0.12);
+  border: 1px solid rgba(180, 94, 58, 0.2);
+}
+
+.coach-copy {
+  margin: 10px 0 0;
+  line-height: 1.6;
+}
+
 .lesson-detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 16px;
@@ -957,9 +970,60 @@ select {
 }
 
 .lesson-bullet-list.empty,
+.lesson-section-list.empty,
+.variation-guide-list.empty,
 .resource-list.empty,
 .support-list.empty {
   color: var(--muted);
+}
+
+.lesson-section-list,
+.variation-guide-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.lesson-section-card,
+.variation-guide-card {
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid rgba(93, 106, 91, 0.14);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.lesson-section-card h4,
+.variation-guide-card h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.lesson-section-card > p,
+.variation-guide-card > p {
+  margin: 10px 0 0;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.variation-guide-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.variation-moves {
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  font-size: 0.9rem;
+  color: var(--olive);
+  background: rgba(49, 64, 51, 0.08);
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.variation-note {
+  color: var(--text);
+  font-style: italic;
 }
 
 .lesson-bullet {
