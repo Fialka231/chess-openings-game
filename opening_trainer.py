@@ -1268,6 +1268,26 @@ def lichess_topic_url(topic: str) -> str:
     return f"https://lichess.org/study/topic/{quote(topic)}/popular"
 
 
+def parse_variation_line(moves: str) -> list[dict[str, Any]]:
+    board = chess.Board()
+    cleaned = re.sub(r"\d+\.(?:\.\.)?", " ", moves)
+    tokens = [token for token in cleaned.split() if token not in {"*", "1-0", "0-1", "1/2-1/2"}]
+    line: list[dict[str, Any]] = []
+    for ply, token in enumerate(tokens, start=1):
+        move = board.parse_san(token)
+        san = board.san(move)
+        board.push(move)
+        line.append(
+            {
+                "ply": ply,
+                "san": san,
+                "uci": move.uci(),
+                "fen": board.fen(),
+            }
+        )
+    return line
+
+
 def lesson_book_entry(lesson: LessonSource, include_local_paths: bool = False) -> dict[str, Any]:
     file_path = resolve_lesson_file(lesson)
     exists = file_path.exists()
@@ -1483,6 +1503,7 @@ def master_course_entry(
                 "why": variation.why,
                 "trainerNote": variation.trainer_note,
                 "checkpoints": list(variation.checkpoints),
+                "line": parse_variation_line(variation.moves),
             }
             for variation in course.variations
         ],

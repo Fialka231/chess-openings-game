@@ -39,6 +39,32 @@ body {
   font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
+body[data-track="queens-gambit"] {
+  --bg: #eadfd6;
+  --bg-alt: #d6dcd9;
+  --accent: #a35147;
+  --accent-dark: #6b312d;
+  --olive: #2f4254;
+  --olive-soft: #647284;
+  --board-frame: #2d2120;
+  --board-light: #efe3ce;
+  --board-dark: #8f6858;
+  --board-target: rgba(28, 67, 76, 0.96);
+}
+
+body[data-track="caro-kann"] {
+  --bg: #ddd8c7;
+  --bg-alt: #c5d2c5;
+  --accent: #a85d30;
+  --accent-dark: #66371a;
+  --olive: #2d4634;
+  --olive-soft: #607363;
+  --board-frame: #2d251d;
+  --board-light: #eadcc2;
+  --board-dark: #6c5b46;
+  --board-target: rgba(34, 82, 41, 0.96);
+}
+
 button,
 input,
 select {
@@ -169,6 +195,154 @@ select {
 
 .hero-home {
   padding: 32px 28px;
+}
+
+.landing-hero {
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.14), transparent 34%),
+    linear-gradient(142deg, rgba(33, 45, 40, 0.98), rgba(77, 63, 48, 0.94));
+}
+
+.home-track-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.track-portal {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.5), transparent 30%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.86), rgba(244, 238, 223, 0.94));
+}
+
+.track-portal::before {
+  content: "";
+  position: absolute;
+  inset: auto -14% -35% auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.track-portal.gambit::before {
+  background: radial-gradient(circle, rgba(163, 81, 71, 0.95), transparent 65%);
+}
+
+.track-portal.caro::before {
+  background: radial-gradient(circle, rgba(45, 70, 52, 0.95), transparent 65%);
+}
+
+.track-portal.active {
+  border-color: rgba(180, 94, 58, 0.28);
+  box-shadow:
+    var(--shadow),
+    0 0 0 2px rgba(180, 94, 58, 0.12);
+}
+
+.track-portal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+
+.track-portal-head h2 {
+  margin: 6px 0 0;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  font-size: clamp(1.7rem, 2.7vw, 2.35rem);
+}
+
+.track-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(35, 35, 31, 0.08);
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.track-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 42rem;
+}
+
+.track-chip-row,
+.focus-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.track-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: rgba(49, 64, 51, 0.08);
+  color: var(--olive);
+  font-size: 0.84rem;
+}
+
+.track-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.focus-banner {
+  margin-top: 18px;
+  padding: 22px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.24), transparent 30%),
+    linear-gradient(140deg, rgba(255, 255, 255, 0.86), rgba(244, 238, 223, 0.92));
+}
+
+.focus-banner-copy h2 {
+  margin: 8px 0 10px;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+}
+
+.focus-banner-copy p:last-child {
+  margin: 0;
+}
+
+.focus-metric {
+  min-width: 132px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(49, 64, 51, 0.08);
+}
+
+.focus-metric strong {
+  display: block;
+  font-size: 1.45rem;
+  color: var(--accent-dark);
+}
+
+.focus-metric span {
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .portal-grid,
@@ -891,7 +1065,9 @@ select {
   text-align: left;
   border: 1px solid rgba(93, 106, 91, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.62);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.4), transparent 36%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.8), rgba(244, 238, 223, 0.92));
   padding: 14px;
   cursor: pointer;
   display: grid;
@@ -899,7 +1075,7 @@ select {
 }
 
 .lesson-item.active {
-  background: rgba(180, 94, 58, 0.14);
+  background: linear-gradient(160deg, rgba(180, 94, 58, 0.18), rgba(255, 255, 255, 0.82));
   border-color: rgba(180, 94, 58, 0.42);
 }
 
@@ -1093,13 +1269,15 @@ select {
   text-align: left;
   border: 1px solid rgba(93, 106, 91, 0.16);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.6);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.38), transparent 38%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.76), rgba(244, 238, 223, 0.92));
   padding: 12px 14px;
   cursor: pointer;
 }
 
 .opening-item.active {
-  background: rgba(180, 94, 58, 0.14);
+  background: linear-gradient(160deg, rgba(180, 94, 58, 0.18), rgba(255, 255, 255, 0.82));
   border-color: rgba(180, 94, 58, 0.42);
 }
 
@@ -1247,6 +1425,7 @@ select {
     --board-size: min(88vw, 520px);
   }
 
+  .home-track-grid,
   .portal-grid,
   .home-strip,
   .lessons-layout,
@@ -1259,6 +1438,11 @@ select {
 
   .board-stage {
     margin-inline: auto;
+  }
+
+  .focus-banner {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
@@ -1312,7 +1496,10 @@ select {
 
   .portal-stats,
   .lesson-actions,
-  .topbar-actions {
+  .topbar-actions,
+  .track-chip-row,
+  .track-actions,
+  .focus-metrics {
     flex-direction: column;
   }
 
@@ -1322,5 +1509,11 @@ select {
 
   .drill-stats {
     grid-template-columns: 1fr;
+  }
+
+  .track-portal-head,
+  .focus-banner {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

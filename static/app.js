@@ -61,13 +61,47 @@ const DRILL_FALLBACK_START_MAX_PLY = 8;
 const DRILL_PREFERRED_SPANS = [6, 4];
 const DRILL_FALLBACK_SPANS = [2];
 const BROWSER_ENGINE_MULTI_PV = 2;
-const BROWSER_ENGINE_DEPTH_LOW = 10;
-const BROWSER_ENGINE_DEPTH_MEDIUM = 11;
-const BROWSER_ENGINE_DEPTH_HIGH = 12;
+const BROWSER_ENGINE_DEPTH_LOW = 20;
+const BROWSER_ENGINE_DEPTH_MEDIUM = 23;
+const BROWSER_ENGINE_DEPTH_HIGH = 25;
+const FOCUS_TRACKS = {
+  "queens-gambit": {
+    id: "queens-gambit",
+    title: "Queen's Gambit",
+    shortTitle: "d4 / Queen's Gambit",
+    side: "White",
+    courseId: "course-queens-gambit-white",
+    guideLessonId: null,
+    theme: "gambit",
+    homeNote:
+      "Play White with principled d4 structures, learn the answers to QGD, QGA, Slav, and the main sidelines, and build a branch-by-branch memory system.",
+    studioIntro:
+      "Train the Queen's Gambit as White. Pick a branch, let Trainer Rook walk you through the ideas, then play the moves until the structure feels natural.",
+    manualIntro:
+      "This manual is your White roadmap for 1.d4 2.c4. Learn the branch logic first, then return to the board and prove you can play the line on demand.",
+  },
+  "caro-kann": {
+    id: "caro-kann",
+    title: "Caro-Kann",
+    shortTitle: "Caro-Kann Defense",
+    side: "Black",
+    courseId: "course-caro-kann-black",
+    guideLessonId: "guide-caro-kann",
+    theme: "caro",
+    homeNote:
+      "Play Black with a clean, resilient answer to 1.e4, covering the Classical, Advance, Exchange, Panov, Fantasy, and club-level sidelines.",
+    studioIntro:
+      "Train the Caro-Kann as Black. Work through the core branches, learn where the light-squared bishop belongs, and play the replies until they become automatic.",
+    manualIntro:
+      "This manual is your Black repertoire for 1...c6. The goal is to know the structures, not just the names, and to be ready for the main White tries by move five.",
+  },
+};
 
 const state = {
   activeView: "home",
+  focusTrackId: null,
   openings: [],
+  databaseOpenings: [],
   databaseMeta: null,
   lessons: [],
   bookCache: new Map(),
@@ -107,6 +141,7 @@ const elements = {
   homeView: document.getElementById("home-view"),
   practiceView: document.getElementById("practice-view"),
   lessonsView: document.getElementById("lessons-view"),
+  homeTrackGrid: document.getElementById("home-track-grid"),
   homeNav: document.getElementById("home-nav"),
   practiceNav: document.getElementById("practice-nav"),
   lessonsNav: document.getElementById("lessons-nav"),
@@ -120,6 +155,12 @@ const elements = {
   homeLessonCount: document.getElementById("home-lesson-count"),
   homeLessonCategoryCount: document.getElementById("home-lesson-category-count"),
   homeEngineNote: document.getElementById("home-engine-note"),
+  practiceHeadKicker: document.getElementById("practice-head-kicker"),
+  practiceHeadTitle: document.getElementById("practice-head-title"),
+  practiceHeadCopy: document.getElementById("practice-head-copy"),
+  practiceTrackTitle: document.getElementById("practice-track-title"),
+  practiceTrackSummary: document.getElementById("practice-track-summary"),
+  practiceTrackMetrics: document.getElementById("practice-track-metrics"),
   board: document.getElementById("board"),
   feedback: document.getElementById("feedback"),
   history: document.getElementById("history"),
@@ -178,6 +219,12 @@ const elements = {
   selectedLessonStatus: document.getElementById("selected-lesson-status"),
   lessonOpenLink: document.getElementById("lesson-open-link"),
   lessonPracticeLink: document.getElementById("lesson-practice-link"),
+  lessonsHeadKicker: document.getElementById("lessons-head-kicker"),
+  lessonsHeadTitle: document.getElementById("lessons-head-title"),
+  lessonsHeadCopy: document.getElementById("lessons-head-copy"),
+  lessonsTrackTitle: document.getElementById("lessons-track-title"),
+  lessonsTrackSummary: document.getElementById("lessons-track-summary"),
+  lessonsTrackMetrics: document.getElementById("lessons-track-metrics"),
 };
 
 let browserEnginePromise = null;
@@ -199,6 +246,10 @@ function pluralize(count, singular, plural = `${singular}s`) {
 }
 
 function currentSideSelection() {
+  const track = currentTrackDefinition();
+  if (track) {
+    return track.side.toLowerCase();
+  }
   if (currentPracticeMode() === "position") {
     return elements.drillSideSelect?.value || "white";
   }
@@ -251,8 +302,196 @@ function currentLesson() {
 }
 
 function lessonCategories() {
-  return [...new Set(state.lessons.map((lesson) => lesson.category))].sort((a, b) =>
+  return [...new Set(visibleLessons().map((lesson) => lesson.category))].sort((a, b) =>
     a.localeCompare(b),
+  );
+}
+
+function slugifyText(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function currentTrackDefinition() {
+  return state.focusTrackId ? FOCUS_TRACKS[state.focusTrackId] || null : null;
+}
+
+function currentTrackCourse() {
+  const track = currentTrackDefinition();
+  return track ? state.lessons.find((lesson) => lesson.id === track.courseId) || null : null;
+}
+
+function trackById(trackId) {
+  return trackId ? FOCUS_TRACKS[trackId] || null : null;
+}
+
+function trackCourse(track) {
+  return track ? state.lessons.find((lesson) => lesson.id === track.courseId) || null : null;
+}
+
+function trackMetrics(track, course) {
+  const branchCount = lessonVariations(course).length;
+  const chapterCount = course?.sections?.length || 0;
+  const resourceCount = course?.resources?.length || 0;
+  return [
+    { value: branchCount || "0", label: "core branches" },
+    { value: chapterCount || "0", label: "course chapters" },
+    { value: resourceCount || "0", label: "study links" },
+  ];
+}
+
+function activeTrackOpenings() {
+  const track = currentTrackDefinition();
+  const course = currentTrackCourse();
+  return track && course ? trackPracticeOpenings(track, course) : [];
+}
+
+function syncFocusedOpenings() {
+  const openings = activeTrackOpenings();
+  state.openings = openings;
+
+  if (!openings.length) {
+    state.selectedOpeningId = null;
+    state.selectedBook = null;
+    return;
+  }
+
+  const selected =
+    openings.find((opening) => opening.id === state.selectedOpeningId) || openings[0];
+  state.selectedOpeningId = selected.id;
+  state.selectedBook = selected.book || state.bookCache.get(selected.id) || null;
+}
+
+async function chooseTrack(trackId, nextView = null) {
+  const track = trackById(trackId);
+  if (!track) {
+    return;
+  }
+
+  state.focusTrackId = track.id;
+  state.search = "";
+  state.lessonSearch = "";
+  state.categoryFilter = "all";
+  state.lessonCategoryFilter = "all";
+  state.selectedSquare = null;
+  state.session = null;
+  state.feedbackTone = "neutral";
+  syncSideSelectors(track.side.toLowerCase());
+  syncFocusedOpenings();
+  focusBestLessonForCurrentOpening();
+
+  if (state.selectedOpeningId) {
+    await selectOpening(state.selectedOpeningId);
+  } else {
+    state.statusMessage = `Loading the ${track.title} course material...`;
+    renderAll();
+  }
+
+  if (nextView) {
+    setActiveView(nextView);
+  } else {
+    renderAll();
+  }
+}
+
+function trackVisibleLessonIds(track, course) {
+  if (!track || !course) {
+    return new Set();
+  }
+  const ids = new Set([course.id]);
+  if (track.guideLessonId) {
+    ids.add(track.guideLessonId);
+  }
+  for (const book of course.relatedBooks || []) {
+    ids.add(book.id);
+  }
+  return ids;
+}
+
+function visibleLessons() {
+  const track = currentTrackDefinition();
+  const course = currentTrackCourse();
+  if (!track || !course) {
+    return [];
+  }
+  const visibleIds = trackVisibleLessonIds(track, course);
+  return state.lessons.filter((lesson) => visibleIds.has(lesson.id));
+}
+
+function lessonVariations(lesson) {
+  return lesson?.variations || [];
+}
+
+function buildLinearRootFromLine(line) {
+  const root = {
+    san: "",
+    uci: "",
+    ply: 0,
+    count: 1,
+    children: [],
+  };
+  let cursor = root;
+  for (const move of line || []) {
+    const child = {
+      san: move.san,
+      uci: move.uci,
+      ply: move.ply,
+      count: 1,
+      children: [],
+    };
+    cursor.children = [child];
+    cursor = child;
+  }
+  return root;
+}
+
+function courseVariationOpening(track, course, variation, index) {
+  const line = variation.line || [];
+  const root = buildLinearRootFromLine(line);
+  const openingId = `${track.id}-variation-${index + 1}-${slugifyText(variation.title)}`;
+  const depth = line.length || 0;
+  const book = {
+    id: openingId,
+    name: variation.title,
+    category: track.shortTitle,
+    fileName: course.title,
+    relativePath: `${track.title} / ${variation.title}`,
+    bookUrl: null,
+    signature: openingId,
+    stats: {
+      games: 1,
+      uniqueLines: line.length ? 1 : 0,
+      nodes: line.length,
+      previewDepth: depth,
+      skippedNonstandard: 0,
+      rootChoices: root.children.length,
+    },
+    root,
+    isCourseVariation: true,
+    courseId: course.id,
+    variationIndex: index,
+  };
+  return {
+    id: openingId,
+    name: variation.title,
+    category: track.title,
+    fileName: course.title,
+    relativePath: `${track.title} / ${variation.title}`,
+    sizeMb: 0,
+    stats: book.stats,
+    isCourseVariation: true,
+    courseId: course.id,
+    trackId: track.id,
+    variationIndex: index,
+    book,
+  };
+}
+
+function trackPracticeOpenings(track, course) {
+  return lessonVariations(course).map((variation, index) =>
+    courseVariationOpening(track, course, variation, index),
   );
 }
 
@@ -266,7 +505,20 @@ function activeOpeningName() {
 
 function lessonMatchesActiveOpening(lesson) {
   const openingId = activeOpeningId();
-  return Boolean(openingId && lesson.matchedOpeningIds?.includes(openingId));
+  if (openingId && lesson.matchedOpeningIds?.includes(openingId)) {
+    return true;
+  }
+  const track = currentTrackDefinition();
+  if (!track) {
+    return false;
+  }
+  if (lesson.id === track.courseId) {
+    return true;
+  }
+  if (track.guideLessonId && lesson.id === track.guideLessonId) {
+    return true;
+  }
+  return false;
 }
 
 function lessonDisplayMetric(lesson) {
@@ -315,6 +567,22 @@ function lessonTypeLabel(lesson) {
 }
 
 function focusBestLessonForCurrentOpening() {
+  const track = currentTrackDefinition();
+  const course = currentTrackCourse();
+  if (track && course) {
+    const visibleLessonsForTrack = sortedLessons(filteredLessons());
+    if (!visibleLessonsForTrack.length) {
+      state.selectedLessonId = course.id;
+      return;
+    }
+    if (
+      !state.selectedLessonId ||
+      !visibleLessonsForTrack.some((lesson) => lesson.id === state.selectedLessonId)
+    ) {
+      state.selectedLessonId = course.id;
+    }
+    return;
+  }
   const openingId = activeOpeningId();
   const visible = sortedLessons(filteredLessons());
   if (!visible.length) {
@@ -604,6 +872,17 @@ function browserEngineDepth() {
   return BROWSER_ENGINE_DEPTH_LOW;
 }
 
+function browserEngineHashMb() {
+  const memoryHint = Number(navigator.deviceMemory) || 4;
+  if (memoryHint >= 8) {
+    return 64;
+  }
+  if (memoryHint >= 4) {
+    return 48;
+  }
+  return 32;
+}
+
 function engineAlternativeMove(info) {
   return info?.pv?.[0] || null;
 }
@@ -695,6 +974,7 @@ async function requestBrowserEvaluation(fen) {
   const depth = browserEngineDepth();
   const lines = await engine.enqueue(
     [
+      `setoption name Hash value ${browserEngineHashMb()}`,
       `setoption name MultiPV value ${BROWSER_ENGINE_MULTI_PV}`,
       `position fen ${fen}`,
       `go depth ${depth}`,
@@ -1525,7 +1805,7 @@ function setEngineIdleState(
   state.engine.detailText = detailText;
   state.engine.bestLineText = state.engine.available === true
     ? state.engine.source === "browser"
-      ? "Browser Stockfish is ready, so evaluation also works on phone and offline web installs."
+      ? `Browser Stockfish is ready, so evaluation also works on phone and offline web installs at adaptive depth up to ${BROWSER_ENGINE_DEPTH_HIGH}.`
       : "Local Stockfish will evaluate the current board as soon as practice starts."
     : state.engine.message;
 }
@@ -1721,6 +2001,7 @@ function renderExpectedMoves() {
   const mode = state.session?.mode || currentPracticeMode();
   const moves = state.session?.expectedMoves || [];
   elements.expectedMoves.innerHTML = "";
+  const track = currentTrackDefinition();
   if (mode === "exam") {
     elements.expectedMoves.className = "chip-row empty";
     if (state.session?.completed) {
@@ -1736,9 +2017,11 @@ function renderExpectedMoves() {
   }
   if (!moves.length) {
     elements.expectedMoves.className = "chip-row empty";
-    const idleMessage = mode === "position"
-      ? "Start Realistic Drill to jump into a random opening position."
-      : "Tap Start Practice to see the opening moves here.";
+    const idleMessage = !track
+      ? "Choose Queen's Gambit or Caro-Kann on the home screen to load coach moves here."
+      : mode === "position"
+        ? "Start Realistic Drill to jump into a random branch position from this track."
+        : "Tap Start Practice to see the guided opening moves here.";
     elements.expectedMoves.textContent = state.session?.completed
       ? mode === "position"
         ? "This drill position is complete."
@@ -1802,14 +2085,17 @@ function renderHistory() {
 
 function renderSessionHeader() {
   const opening = currentOpeningSummary();
+  const track = currentTrackDefinition();
   elements.currentOpening.textContent = opening?.name || "Choose an opening";
   elements.currentMeta.textContent = opening
     ? `${opening.category} • ${opening.relativePath || opening.fileName}`
-    : currentPracticeMode() === "position"
-      ? "Realistic Drill pulls a random opening from the full database each time."
-      : currentPracticeMode() === "exam"
-        ? "Blind Recall pulls a random opening from the full database and hides the next move."
-        : "Load an opening to see its repertoire group and source file.";
+    : !track
+      ? "Choose Queen's Gambit or Caro-Kann on the home screen to unlock the branch map."
+      : currentPracticeMode() === "position"
+        ? "Realistic Drill pulls a random branch from the current opening track."
+        : currentPracticeMode() === "exam"
+          ? "Blind Recall pulls a random branch from the current opening track and hides the next move."
+          : "Load a branch to see its teaching path and line preview.";
 
   if (state.session?.mode === "position") {
     elements.depthPill.textContent = "Realistic Drill • 2-3 move solve";
@@ -1895,6 +2181,172 @@ function renderHomeDashboard() {
   }
 }
 
+function renderMetricCards(container, metrics) {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  for (const metric of metrics) {
+    const block = document.createElement("div");
+    block.className = "focus-metric";
+    block.innerHTML = `<strong>${metric.value}</strong><span>${metric.label}</span>`;
+    container.appendChild(block);
+  }
+}
+
+function renderTrackHomeGrid() {
+  if (!elements.homeTrackGrid) {
+    return;
+  }
+
+  elements.homeTrackGrid.innerHTML = "";
+
+  for (const track of Object.values(FOCUS_TRACKS)) {
+    const course = trackCourse(track);
+    const card = document.createElement("article");
+    card.className = `track-portal card ${track.theme}`;
+    if (track.id === state.focusTrackId) {
+      card.classList.add("active");
+    }
+
+    const branchTitles = lessonVariations(course)
+      .slice(0, 4)
+      .map((variation) => variation.title);
+    const branchChips = branchTitles.length
+      ? branchTitles.map((title) => `<span class="track-chip">${title}</span>`).join("")
+      : '<span class="track-chip">Loading branches...</span>';
+
+    card.innerHTML = `
+      <div class="track-portal-head">
+        <div>
+          <p class="panel-label">${track.side} Track</p>
+          <h2>${track.shortTitle}</h2>
+        </div>
+        <span class="track-badge">${track.theme === "gambit" ? "White pressure" : "Black structure"}</span>
+      </div>
+      <p class="track-note">${track.homeNote}</p>
+      <div class="focus-metrics">
+        ${trackMetrics(track, course)
+          .map((metric) => `<div class="focus-metric"><strong>${metric.value}</strong><span>${metric.label}</span></div>`)
+          .join("")}
+      </div>
+      <div class="track-chip-row">${branchChips}</div>
+      <div class="track-actions">
+        <button class="primary-btn" type="button" data-track-action="practice" data-track-id="${track.id}">Enter Board Studio</button>
+        <button class="ghost-btn" type="button" data-track-action="lessons" data-track-id="${track.id}">Open Master Manual</button>
+      </div>
+    `;
+
+    for (const button of card.querySelectorAll("[data-track-action]")) {
+      button.addEventListener("click", () => {
+        const nextView = button.dataset.trackAction === "lessons" ? "lessons" : "practice";
+        void chooseTrack(button.dataset.trackId, nextView);
+      });
+    }
+
+    elements.homeTrackGrid.appendChild(card);
+  }
+}
+
+function renderTrackHeaders() {
+  const track = currentTrackDefinition();
+  const course = currentTrackCourse();
+  document.body.dataset.track = track?.id || "neutral";
+  document.title = track
+    ? `${track.title} Mastery Studio`
+    : "Opening Mastery Studio";
+
+  if (elements.searchInput) {
+    elements.searchInput.placeholder = track
+      ? `Search ${track.title} branches...`
+      : "Search branch names...";
+  }
+  if (elements.lessonSearchInput) {
+    elements.lessonSearchInput.placeholder = track
+      ? `Search the ${track.title} manual...`
+      : "Search titles, authors, tags...";
+  }
+
+  const practiceTitle = track ? `${track.title} Board Studio` : "Choose Queen's Gambit or Caro-Kann";
+  const practiceCopy = track
+    ? track.studioIntro
+    : "Pick a focused track from home to enter the guided board studio.";
+  if (elements.practiceHeadKicker) {
+    elements.practiceHeadKicker.textContent = track ? `${track.side} Repertoire` : "Board Studio";
+  }
+  if (elements.practiceHeadTitle) {
+    elements.practiceHeadTitle.textContent = practiceTitle;
+  }
+  if (elements.practiceHeadCopy) {
+    elements.practiceHeadCopy.textContent = practiceCopy;
+  }
+  if (elements.practiceTrackTitle) {
+    elements.practiceTrackTitle.textContent = track ? track.shortTitle : "No track selected";
+  }
+  if (elements.practiceTrackSummary) {
+    elements.practiceTrackSummary.textContent = track
+      ? track.manualIntro
+      : "Return to Home and choose the Queen's Gambit or Caro-Kann path.";
+  }
+  renderMetricCards(
+    elements.practiceTrackMetrics,
+    track && course
+      ? trackMetrics(track, course)
+      : [
+          { value: "2", label: "focused tracks" },
+          { value: "3", label: "training modes" },
+          { value: "25", label: "browser depth cap" },
+        ],
+  );
+
+  const lessonsTitle = track ? `${track.title} Master Manual` : "No track selected";
+  const lessonsCopy = track
+    ? track.manualIntro
+    : "Return to Home and choose the Queen's Gambit or Caro-Kann learning path.";
+  if (elements.lessonsHeadKicker) {
+    elements.lessonsHeadKicker.textContent = track ? `${track.side} Study Track` : "Master Manual";
+  }
+  if (elements.lessonsHeadTitle) {
+    elements.lessonsHeadTitle.textContent = track ? lessonsTitle : "Choose a track to open its study manual";
+  }
+  if (elements.lessonsHeadCopy) {
+    elements.lessonsHeadCopy.textContent = track
+      ? `Study the ${track.title} ideas branch by branch, then return to the board studio and prove the moves under pressure.`
+      : "The lesson space is now a focused manual for one opening system at a time: branch map, key ideas, model plans, and supporting books.";
+  }
+  if (elements.lessonsTrackTitle) {
+    elements.lessonsTrackTitle.textContent = lessonsTitle;
+  }
+  if (elements.lessonsTrackSummary) {
+    elements.lessonsTrackSummary.textContent = lessonsCopy;
+  }
+  renderMetricCards(
+    elements.lessonsTrackMetrics,
+    track && course
+      ? trackMetrics(track, course)
+      : [
+          { value: "2", label: "manual paths" },
+          { value: "1", label: "board studio" },
+          { value: "1", label: "goal: clarity" },
+        ],
+  );
+
+  const lockedSide = track?.side.toLowerCase() || "";
+  for (const control of [elements.lineSideSelect, elements.drillSideSelect, elements.examSideSelect]) {
+    if (!control) {
+      continue;
+    }
+    if (lockedSide) {
+      control.value = lockedSide;
+      control.disabled = true;
+      control.title = `${track.title} training is always from the ${track.side} side.`;
+    } else {
+      control.disabled = false;
+      control.removeAttribute("title");
+    }
+  }
+}
+
 function renderPracticeModeTabs() {
   const mode = currentPracticeMode();
   if (
@@ -1934,44 +2386,43 @@ function setActiveMode(mode) {
 
   if (state.selectedBook) {
     state.statusMessage = mode === "position"
-      ? "Realistic drill ready. Start a random opening puzzle from the full database."
+      ? "Realistic drill ready. Start a random branch puzzle from the current track."
       : mode === "exam"
-        ? "Blind Recall ready. Start a random opening test with no move hints."
-      : "Line play ready. Start from move 1 and follow the trainer's responses.";
+        ? "Blind Recall ready. Start a random branch test with no move hints."
+      : "Line play ready. Start from move 1 and follow the trainer's replies.";
   } else {
-    state.statusMessage = mode === "position"
-      ? "Realistic drill is ready. Start and the app will choose a random opening for you."
-      : mode === "exam"
-        ? "Blind Recall is ready. Start and the app will choose a random opening with no hints."
-      : "Select an opening on the right, then start a practice session.";
+    state.statusMessage = !currentTrackDefinition()
+      ? "Choose Queen's Gambit or Caro-Kann on the home screen first."
+      : mode === "position"
+        ? "Realistic drill is ready. Start and the app will choose a random branch for you."
+        : mode === "exam"
+          ? "Blind Recall is ready. Start and the app will choose a random branch with no hints."
+        : "Choose a branch on the right, then start a practice session.";
   }
 
   setEngineIdleState(
     mode === "position"
-      ? "Start realistic drill to evaluate a random opening position."
+      ? "Start realistic drill to evaluate a random branch position."
       : mode === "exam"
-        ? "Start Blind Recall to evaluate a random opening position with browser or local Stockfish."
-      : "Start line play to evaluate the current opening position.",
+        ? "Start Blind Recall to evaluate a random branch position with browser or local Stockfish."
+      : "Start line play to evaluate the current branch position.",
   );
   renderAll();
 }
 
 function renderDatabaseSummary() {
+  const track = currentTrackDefinition();
+  const course = currentTrackCourse();
   if (state.loadingDatabase) {
-    elements.databaseSummary.textContent = "Loading the opening database index...";
+    elements.databaseSummary.textContent = "Loading the guided branch map...";
+  } else if (!track || !course) {
+    elements.databaseSummary.textContent =
+      "Choose Queen's Gambit or Caro-Kann on the home screen to load the guided branch roadmap.";
   } else if (!state.openings.length) {
     elements.databaseSummary.textContent =
-      "Build the opening database to make every opening browsable and downloadable as JSON.";
+      `The ${track.title} course is loaded, but its guided branch map is not ready yet.`;
   } else {
-    const categoryCount = categories().length;
-    const builtAt = state.databaseMeta?.builtAt
-      ? new Date(state.databaseMeta.builtAt).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        })
-      : null;
-    elements.databaseSummary.textContent = `${state.openings.length} opening books across ${categoryCount} repertoire groups${builtAt ? `, built ${builtAt}` : ""}.`;
+    elements.databaseSummary.textContent = `${state.openings.length} guided branches for ${track.title}. ${course.sections?.length || 0} teaching chapters and ${course.resources?.length || 0} outside references support this track.`;
   }
 
   elements.databaseIndexLink.href = DATABASE_URLS[0];
@@ -1989,6 +2440,20 @@ function renderDatabaseSummary() {
 function renderCategoryFilters() {
   const available = categories();
   elements.categoryFilters.innerHTML = "";
+
+  if (!currentTrackDefinition()) {
+    elements.categoryFilters.innerHTML =
+      '<span class="subtle-copy">Choose a track on the home screen.</span>';
+    return;
+  }
+
+  if (available.length <= 1) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = "Full course";
+    elements.categoryFilters.appendChild(chip);
+    return;
+  }
 
   const allCategories = ["all", ...available];
   for (const category of allCategories) {
@@ -2023,7 +2488,7 @@ function filteredOpenings() {
 
 function filteredLessons() {
   const query = state.lessonSearch.trim().toLowerCase();
-  const lessons = state.lessons.filter((lesson) => {
+  const lessons = visibleLessons().filter((lesson) => {
     const matchesCategory =
       state.lessonCategoryFilter === "all" || lesson.category === state.lessonCategoryFilter;
     const matchesQuery =
@@ -2059,6 +2524,11 @@ function renderLessonCategories() {
     return;
   }
   elements.lessonCategoryFilters.innerHTML = "";
+  if (!currentTrackDefinition()) {
+    elements.lessonCategoryFilters.innerHTML =
+      '<span class="subtle-copy">Choose a track on the home screen.</span>';
+    return;
+  }
   const allCategories = ["all", ...lessonCategories()];
   for (const category of allCategories) {
     const button = document.createElement("button");
@@ -2082,16 +2552,23 @@ function renderLessonsList() {
     return;
   }
   const filtered = filteredLessons();
+  const visibleTotal = visibleLessons().length;
   elements.lessonList.innerHTML = "";
   elements.lessonCount.textContent = state.loadingLessons
     ? "Loading..."
-    : filtered.length === state.lessons.length
+    : filtered.length === visibleTotal
       ? `${filtered.length} resources`
-      : `${filtered.length} of ${state.lessons.length} resources`;
+      : `${filtered.length} of ${visibleTotal} resources`;
 
   if (state.loadingLessons) {
     elements.lessonList.innerHTML =
-      '<p class="subtle-copy">Loading the lessons shelf...</p>';
+      '<p class="subtle-copy">Loading the manual shelf...</p>';
+    return;
+  }
+
+  if (!currentTrackDefinition()) {
+    elements.lessonList.innerHTML =
+      '<p class="subtle-copy">Choose the Queen&apos;s Gambit or Caro-Kann on the home screen to open the focused manual for that track.</p>';
     return;
   }
 
@@ -2158,11 +2635,17 @@ function renderSelectedLesson() {
   if (!lesson) {
     elements.selectedLessonTitle.textContent = "Choose a lesson";
     elements.selectedLessonMeta.textContent =
-      "Pick a guide or book from the shelf to see what it covers and how it connects to your repertoire.";
+      currentTrackDefinition()
+        ? "Pick a guide or book from the shelf to see what it covers and how it connects to your repertoire."
+        : "Choose the Queen's Gambit or Caro-Kann on the home screen to open the focused manual.";
     elements.selectedLessonSummary.textContent =
-      "Your study shelf will appear here after the lesson catalog loads.";
+      currentTrackDefinition()
+        ? "Your study shelf will appear here after the lesson catalog loads."
+        : "The manual detail view activates after you choose a focused opening track.";
     elements.selectedLessonContext.textContent =
-      "Select a guide to see its opening coverage, resource links, and supporting books.";
+      currentTrackDefinition()
+        ? "Select a guide to see its opening coverage, resource links, and supporting books."
+        : "Return home, choose Queen's Gambit or Caro-Kann, and the course manual will load here.";
     elements.selectedLessonCoach.hidden = true;
     elements.selectedLessonCoach.textContent = "";
     elements.selectedLessonFocus.textContent = "Lesson focus will appear here.";
@@ -2435,20 +2918,27 @@ function renderSelectedLesson() {
 function renderOpenings() {
   const filtered = filteredOpenings();
   elements.openingList.innerHTML = "";
+  const total = state.openings.length;
   elements.openingCount.textContent = state.loadingDatabase
     ? "Loading..."
-    : filtered.length === state.openings.length
-      ? `${filtered.length} opening files`
-      : `${filtered.length} of ${state.openings.length} opening files`;
+    : filtered.length === total
+      ? `${filtered.length} branches`
+      : `${filtered.length} of ${total} branches`;
 
   if (state.loadingDatabase) {
     elements.openingList.innerHTML =
-      '<p class="subtle-copy">Loading the opening database...</p>';
+      '<p class="subtle-copy">Loading the branch roadmap...</p>';
+    return;
+  }
+
+  if (!currentTrackDefinition()) {
+    elements.openingList.innerHTML =
+      '<p class="subtle-copy">Choose the Queen&apos;s Gambit or Caro-Kann on the home screen to unlock the branch roadmap.</p>';
     return;
   }
 
   if (!filtered.length) {
-    elements.openingList.innerHTML = '<p class="subtle-copy">No openings matched your search.</p>';
+    elements.openingList.innerHTML = '<p class="subtle-copy">No branches matched your search.</p>';
     return;
   }
 
@@ -2523,12 +3013,16 @@ function renderVariationTree() {
     elements.variationTitle.textContent = "Select an opening";
     elements.variationStats.className = "stats-grid empty";
     elements.variationStats.textContent = state.loadingBook
-      ? "Loading the selected opening book..."
-      : "No opening selected.";
+      ? "Loading the selected branch..."
+      : currentTrackDefinition()
+        ? "No branch selected."
+        : "Choose a track on the home screen.";
     elements.tree.className = "tree empty";
     elements.tree.textContent = state.loadingBook
-      ? "Preparing the opening tree..."
-      : "The opening tree will appear here.";
+      ? "Preparing the branch preview..."
+      : currentTrackDefinition()
+        ? "The branch preview will appear here."
+        : "Choose a track on the home screen to unlock the branch preview.";
     return;
   }
 
@@ -2615,6 +3109,8 @@ function updateButtons() {
 function renderAll() {
   renderViewState();
   renderHomeDashboard();
+  renderTrackHomeGrid();
+  renderTrackHeaders();
   renderBoard();
   renderFeedback();
   renderEngineCard();
@@ -2703,7 +3199,7 @@ async function loadEngineStatus() {
 async function loadDatabase() {
   state.loadingDatabase = true;
   state.feedbackTone = "neutral";
-  state.statusMessage = "Loading the opening database...";
+  state.statusMessage = "Loading the opening data...";
   renderAll();
 
   try {
@@ -2713,10 +3209,11 @@ async function loadDatabase() {
       builtAt: payload.builtAt || null,
       maxBookPly: payload.maxBookPly || null,
     };
-    state.openings = payload.openings || [];
-    state.statusMessage = state.openings.length
-      ? `Opening database ready with ${state.openings.length} files.`
-      : "No opening books were found. Run the build step first.";
+    state.databaseOpenings = payload.openings || [];
+    syncFocusedOpenings();
+    state.statusMessage = state.databaseOpenings.length
+      ? "Opening data is ready."
+      : "No opening data was found. Run the build step first.";
   } catch (error) {
     state.feedbackTone = "error";
     state.statusMessage = `${error.message} Run './.venv/bin/python opening_trainer.py build --force' if the database has not been generated yet.`;
@@ -2733,10 +3230,12 @@ async function loadLessons() {
   try {
     const payload = await requestJsonWithFallback(LESSONS_URLS);
     state.lessons = payload.lessons || [];
+    syncFocusedOpenings();
     focusBestLessonForCurrentOpening();
   } catch (_error) {
     state.lessons = [];
     state.selectedLessonId = null;
+    syncFocusedOpenings();
   } finally {
     state.loadingLessons = false;
     renderAll();
@@ -2744,6 +3243,10 @@ async function loadLessons() {
 }
 
 async function loadBook(opening) {
+  if (opening.book) {
+    state.bookCache.set(opening.id, opening.book);
+    return opening.book;
+  }
   if (state.bookCache.has(opening.id)) {
     return state.bookCache.get(opening.id);
   }
@@ -2756,7 +3259,7 @@ async function loadBook(opening) {
 async function loadRandomDrillBook(userColor) {
   const openings = shuffled(state.openings);
   if (!openings.length) {
-    throw new Error("No openings are available for realistic drill mode.");
+    throw new Error("No guided branches are available for this track yet.");
   }
 
   let fallback = null;
@@ -2791,23 +3294,23 @@ async function selectOpening(openingId) {
   state.feedbackTone = "neutral";
   state.session = null;
   state.selectedBook = null;
-  state.statusMessage = "Loading the selected opening from the database...";
+  state.statusMessage = "Loading the selected branch...";
   focusBestLessonForCurrentOpening();
   renderAll();
 
   try {
     state.selectedBook = await loadBook(opening);
     state.statusMessage = currentPracticeMode() === "position"
-      ? "Opening loaded for line reference. Realistic Drill still chooses a random opening from the full database."
+      ? "Branch loaded for line reference. Realistic Drill still chooses a random branch from the current track."
       : currentPracticeMode() === "exam"
-        ? "Opening loaded for reference. Blind Recall still chooses a random opening from the full database."
-      : "Opening loaded. Start line play, then tap a highlighted piece and its target square.";
+        ? "Branch loaded for reference. Blind Recall still chooses a random branch from the current track."
+        : "Branch loaded. Start line play, then tap a highlighted piece and its target square.";
     setEngineIdleState(
       currentPracticeMode() === "position"
-        ? "Start realistic drill to see Stockfish evaluate a random opening position."
+        ? "Start realistic drill to see Stockfish evaluate a random branch position."
         : currentPracticeMode() === "exam"
-          ? "Start Blind Recall to see Stockfish evaluate a random opening position with no hints."
-        : "Start practice to see Stockfish evaluate the line on the board.",
+          ? "Start Blind Recall to see Stockfish evaluate a random branch position with no hints."
+        : "Start practice to see Stockfish evaluate the current branch on the board.",
     );
   } catch (error) {
     state.feedbackTone = "error";
@@ -2825,6 +3328,12 @@ async function startPractice() {
   const userColor = currentSideSelection();
   const depth = currentLineDepth();
 
+  if (!currentTrackDefinition()) {
+    state.feedbackTone = "error";
+    state.statusMessage = "Choose Queen's Gambit or Caro-Kann on the home screen first.";
+    renderAll();
+    return;
+  }
   if (mode === "line" && !state.selectedBook) {
     return;
   }
@@ -2836,10 +3345,10 @@ async function startPractice() {
   state.startingSession = true;
   state.feedbackTone = "neutral";
   state.statusMessage = mode === "position"
-    ? "Loading a realistic drill from a random opening..."
+    ? "Loading a realistic drill from a random track branch..."
     : mode === "exam"
-      ? "Loading a blind recall from a random opening..."
-      : "Starting a practice line...";
+      ? "Loading a blind recall from a random track branch..."
+      : "Starting a guided branch line...";
   renderAll();
 
   try {
@@ -3108,6 +3617,8 @@ if (elements.lessonPracticeLink) {
     const lesson = currentLesson();
     if (lesson?.practiceOpeningId && lesson.practiceOpeningId !== state.selectedOpeningId) {
       await selectOpening(lesson.practiceOpeningId);
+    } else if (!state.selectedOpeningId && state.openings.length) {
+      await selectOpening(state.openings[0].id);
     }
     setActiveView("practice");
   });
